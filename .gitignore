@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# 環境変数
+.env
+
+# 生成物
+output/
+assets/audio/
+
+# フォント（サイズが大きいため）
+assets/fonts/*.ttf
+assets/fonts/*.otf
+
+# OS
+.DS_Store
+Thumbs.db

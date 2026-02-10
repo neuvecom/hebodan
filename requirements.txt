@@ -1,0 +1,6 @@
+google-generativeai
+moviepy>=2.0
+Pillow
+python-dotenv
+requests
+numpy
