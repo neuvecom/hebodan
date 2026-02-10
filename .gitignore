@@ -13,6 +13,7 @@ venv/
 # 生成物
 output/
 assets/audio/
+assets/images/_backup/
 
 # フォント（サイズが大きいため）
 assets/fonts/*.ttf

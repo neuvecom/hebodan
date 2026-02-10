@@ -20,6 +20,7 @@ from datetime import datetime
 
 from src.config import AUDIO_DIR, FONT_PATH, OUTPUT_DIR
 from src.generators.audio_generator import AudioGenerator
+from src.generators.background_generator import generate_backgrounds
 from src.generators.script_generator import ScriptGenerator
 from src.generators.video_composer import compose_landscape, compose_portrait
 
@@ -69,7 +70,7 @@ def main():
   logger.info("=" * 50)
 
   # ステップ1: 台本生成
-  logger.info("[1/4] 台本を生成中...")
+  logger.info("[1/5] 台本を生成中...")
   script_gen = ScriptGenerator()
   script = script_gen.generate(args.theme)
   logger.info(
@@ -85,19 +86,35 @@ def main():
   )
 
   # ステップ2: 音声生成
-  logger.info("[2/4] 音声を生成中...")
+  logger.info("[2/5] 音声を生成中...")
   audio_gen = AudioGenerator()
   audio_paths = audio_gen.generate(script.dialogue, audio_output_dir)
 
-  # ステップ3: 横長動画合成 (16:9)
-  logger.info("[3/4] 横長動画 (16:9) を合成中...")
-  landscape_path = run_output_dir / "landscape.mp4"
-  compose_landscape(script.dialogue, audio_paths, landscape_path)
+  # ステップ3: 背景画像生成
+  logger.info("[3/5] 背景画像を生成中...")
+  landscape_bg, portrait_bg = generate_backgrounds(args.theme, run_output_dir)
+  if landscape_bg:
+    logger.info("背景画像(横): %s", landscape_bg)
+  if portrait_bg:
+    logger.info("背景画像(縦): %s", portrait_bg)
+  if not landscape_bg and not portrait_bg:
+    logger.info("背景画像生成スキップ（ソリッドカラーを使用）")
 
-  # ステップ4: 縦長動画合成 (9:16)
-  logger.info("[4/4] 縦長動画 (9:16) を合成中...")
+  # ステップ4: 横長動画合成 (16:9)
+  logger.info("[4/5] 横長動画 (16:9) を合成中...")
+  landscape_path = run_output_dir / "landscape.mp4"
+  compose_landscape(
+    script.dialogue, audio_paths, landscape_path, landscape_bg,
+    title=script.meta.title,
+  )
+
+  # ステップ5: 縦長動画合成 (9:16)
+  logger.info("[5/5] 縦長動画 (9:16) を合成中...")
   portrait_path = run_output_dir / "portrait.mp4"
-  compose_portrait(script.dialogue, audio_paths, portrait_path)
+  compose_portrait(
+    script.dialogue, audio_paths, portrait_path, portrait_bg,
+    title=script.meta.title,
+  )
 
   # note記事を保存
   note_path = run_output_dir / "note.md"
@@ -113,6 +130,10 @@ def main():
   logger.info("出力ファイル:")
   logger.info("  動画(横):  %s", landscape_path)
   logger.info("  動画(縦):  %s", portrait_path)
+  if landscape_bg:
+    logger.info("  背景(横):  %s", landscape_bg)
+  if portrait_bg:
+    logger.info("  背景(縦):  %s", portrait_bg)
   logger.info("  note記事:  %s", note_path)
   logger.info("  X投稿文:   %s", x_post_path)
   logger.info("  台本JSON:  %s", script_path)

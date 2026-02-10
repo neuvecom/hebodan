@@ -41,14 +41,21 @@ class AudioGenerator:
     return resp.json()
 
   def _synthesize(
-    self, prosody: dict, speaker_uuid: str, style_id: int
+    self, text: str, prosody: dict, speaker_uuid: str, style_id: int
   ) -> bytes:
     """音声合成を実行してWAVバイナリを取得する"""
     payload = {
       "speakerUuid": speaker_uuid,
       "styleId": style_id,
+      "text": text,
       "prosodyDetail": prosody.get("detail", []),
       "speedScale": 1.0,
+      "volumeScale": 1.0,
+      "pitchScale": 0.0,
+      "intonationScale": 1.0,
+      "prePhonemeLength": 0.1,
+      "postPhonemeLength": 0.1,
+      "outputSamplingRate": 44100,
     }
     resp = requests.post(
       f"{self.host}/v1/synthesis",
@@ -96,7 +103,7 @@ class AudioGenerator:
       )
 
       prosody = self._estimate_prosody(line.text, speaker_uuid, style_id)
-      wav_data = self._synthesize(prosody, speaker_uuid, style_id)
+      wav_data = self._synthesize(line.text, prosody, speaker_uuid, style_id)
 
       output_path.write_bytes(wav_data)
       audio_paths.append(output_path)

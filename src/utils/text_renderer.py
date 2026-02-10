@@ -54,10 +54,14 @@ def render_text(
   total_height = sum(line_heights) + line_spacing * (len(lines) - 1)
   total_width = max(line_widths)
 
-  # 縁取り分のパディングを追加
+  # 縁取り + bbox オフセット分のパディングを追加
+  # getbbox の top (bbox[1]) が正の値だと、描画位置から下にずれるため
+  # その分を下部パディングに加算しないとグリフの下端が切れる
+  max_top_offset = max(bbox[1] for bbox in line_bboxes)
   padding = stroke_width * 2
+  bottom_extra = max(0, max_top_offset)
   img_width = total_width + padding * 2
-  img_height = total_height + padding * 2
+  img_height = total_height + padding * 2 + bottom_extra
 
   # 透明背景で描画
   img = Image.new("RGBA", (img_width, img_height), (0, 0, 0, 0))

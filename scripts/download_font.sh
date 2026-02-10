@@ -7,7 +7,7 @@ FONTS_DIR="$PROJECT_ROOT/assets/fonts"
 
 mkdir -p "$FONTS_DIR"
 
-FONT_URL="https://github.com/google/fonts/raw/main/ofl/notosansjp/NotoSansJP-Bold.ttf"
+FONT_URL="https://github.com/google/fonts/raw/refs/heads/main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf"
 FONT_FILE="$FONTS_DIR/NotoSansJP-Bold.ttf"
 
 if [ -f "$FONT_FILE" ]; then

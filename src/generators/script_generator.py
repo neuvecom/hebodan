@@ -2,8 +2,11 @@
 
 import json
 import logging
+import time
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
+from google.genai.errors import ClientError
 
 from src.config import GEMINI_API_KEY, GEMINI_MODEL, CHARACTERS
 from src.models import ScriptData
@@ -13,8 +16,8 @@ logger = logging.getLogger(__name__)
 # キャラクター設定をプロンプト用テキストに整形
 _CHARACTER_PROMPT = f"""
 ## キャラクター設定
-- **{CHARACTERS["ririn"]["name"]}** (ririn): 毒舌でボケ担当。口が悪く斜に構えているが、どこか憎めない。
-- **{CHARACTERS["tsukuyomi"]["name"]}** (tsukuyomi): 冷静でクール。ツッコミ・解説担当。知的で落ち着いている。リリンを論理的に諭す。
+- **{CHARACTERS["tsuno"]["name"]}** (tsuno): 毒舌でボケ担当。口が悪く斜に構えているが、どこか憎めない。
+- **{CHARACTERS["megane"]["name"]}** (megane): 冷静でクール。ツッコミ・解説担当。知的で落ち着いている。つのを論理的に諭す。
 """.strip()
 
 _SYSTEM_PROMPT = f"""
@@ -25,8 +28,8 @@ _SYSTEM_PROMPT = f"""
 
 ## 出力ルール
 - セリフは15〜25往復程度（合計30〜50行）
-- リリンは口語的で砕けた表現を使う
-- つくよみは丁寧語で論理的に話す
+- つのは口語的で砕けた表現を使う
+- めがねは丁寧語で論理的に話す
 - emotion は "normal", "happy", "angry", "sad", "surprised" のいずれか
 - note_content はMarkdown形式で1000〜2000文字程度の解説記事
 - x_post_content は140文字以内のX投稿文（ハッシュタグ含む）
@@ -35,8 +38,8 @@ _SYSTEM_PROMPT = f"""
 {{
   "meta": {{ "theme": "テーマ名", "title": "動画タイトル" }},
   "dialogue": [
-    {{ "speaker": "ririn", "text": "セリフ", "emotion": "感情" }},
-    {{ "speaker": "tsukuyomi", "text": "セリフ", "emotion": "感情" }}
+    {{ "speaker": "tsuno", "text": "セリフ", "emotion": "感情" }},
+    {{ "speaker": "megane", "text": "セリフ", "emotion": "感情" }}
   ],
   "note_content": "# タイトル\\n\\n本文...",
   "x_post_content": "投稿文 #へぼ談"
@@ -53,11 +56,40 @@ class ScriptGenerator:
         "GEMINI_API_KEY が設定されていません。"
         ".env ファイルに GEMINI_API_KEY を設定してください。"
       )
-    genai.configure(api_key=GEMINI_API_KEY)
-    self.model = genai.GenerativeModel(
-      model_name=GEMINI_MODEL,
-      system_instruction=_SYSTEM_PROMPT,
-    )
+    self.client = genai.Client(api_key=GEMINI_API_KEY)
+
+  def _call_api(self, prompt: str, max_rate_retries: int = 5) -> str:
+    """Gemini APIを呼び出す（429レート制限時は自動リトライ）
+
+    Args:
+      prompt: ユーザープロンプト
+      max_rate_retries: レート制限時の最大リトライ回数
+
+    Returns:
+      APIレスポンスのテキスト
+    """
+    for attempt in range(max_rate_retries + 1):
+      try:
+        response = self.client.models.generate_content(
+          model=GEMINI_MODEL,
+          contents=prompt,
+          config=types.GenerateContentConfig(
+            system_instruction=_SYSTEM_PROMPT,
+            response_mime_type="application/json",
+            temperature=0.9,
+          ),
+        )
+        return response.text
+      except ClientError as e:
+        if e.code == 429 and attempt < max_rate_retries:
+          wait = 2 ** attempt * 10  # 10s, 20s, 40s, 80s, 160s
+          logger.warning(
+            "レート制限 (429)。%d秒後にリトライします... (%d/%d)",
+            wait, attempt + 1, max_rate_retries,
+          )
+          time.sleep(wait)
+        else:
+          raise
 
   def generate(self, theme: str, max_retries: int = 2) -> ScriptData:
     """テーマから台本を生成する
@@ -76,14 +108,7 @@ class ScriptGenerator:
         logger.info(
           "台本生成中... (試行 %d/%d)", attempt + 1, max_retries + 1
         )
-        response = self.model.generate_content(
-          user_prompt,
-          generation_config=genai.GenerationConfig(
-            response_mime_type="application/json",
-            temperature=0.9,
-          ),
-        )
-        raw_text = response.text
+        raw_text = self._call_api(user_prompt)
         data = json.loads(raw_text)
         script = ScriptData.from_dict(data)
         logger.info(

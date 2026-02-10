@@ -1,4 +1,4 @@
-google-generativeai
+google-genai
 moviepy>=2.0
 Pillow
 python-dotenv
