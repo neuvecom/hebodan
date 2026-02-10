@@ -31,6 +31,7 @@ _SYSTEM_PROMPT = f"""
 - つのは口語的で砕けた表現を使う
 - めがねは丁寧語で論理的に話す
 - emotion は "normal", "happy", "angry", "sad", "surprised" のいずれか
+- emotion の使用頻度: "normal" と "happy" を中心に使い、"angry" はなるべく使わない（全体の5%以下）
 - note_content はMarkdown形式で1000〜2000文字程度の解説記事
 - x_post_content は140文字以内のX投稿文（ハッシュタグ含む）
 

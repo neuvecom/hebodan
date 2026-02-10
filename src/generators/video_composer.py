@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from moviepy import (
   AudioFileClip,
   ColorClip,
@@ -19,6 +19,7 @@ from src.config import (
   BG_COLOR,
   DIALOGUE_LOGO_PATH,
   FONT_PATH,
+  IMAGES_DIR,
   LANDSCAPE_SIZE,
   LIPSYNC_MIN_OPEN_FRAMES,
   LIPSYNC_THRESHOLD,
@@ -486,7 +487,7 @@ def compose_landscape(
       )
       logo_bx = (width - dialogue_logo_w) // 2
       char_bottom = max(tsuno_by + ts_h, megane_by + mg_h)
-      logo_by = (char_bottom + text_area_top) // 2 - dialogue_logo_h // 2 - 20
+      logo_by = (char_bottom + text_area_top) // 2 - dialogue_logo_h // 2 - 70
       logo_clip = logo_clip.with_position(
         lambda t, bx=logo_bx, by=logo_by: (
           bx + int(3 * np.sin(2 * np.pi * 2.5 * t)),
@@ -500,7 +501,7 @@ def compose_landscape(
       line.text, duration, max_width=int(width * 0.85),
     )
     sub_h = subtitle.size[1]
-    subtitle_y = text_area_top + (height - text_area_top - sub_h) // 2
+    subtitle_y = text_area_top + (height - text_area_top - sub_h) // 2 - 50
     subtitle = subtitle.with_position(("center", subtitle_y))
     scene_layers.append(subtitle)
 
@@ -526,6 +527,214 @@ def compose_landscape(
   logger.info("横長動画出力完了: %s", output_path)
 
 
+# --- LINE チャット風縦動画ヘルパー ---
+
+# チャットレイアウト定数
+_CHAT_ICON_SIZE = 80
+_CHAT_ICON_MARGIN = 30
+_CHAT_ICON_GAP = 12
+_CHAT_BUBBLE_MAX_WIDTH = 700
+_CHAT_BUBBLE_PADDING = 20
+_CHAT_BUBBLE_RADIUS = 20
+_CHAT_MSG_SPACING = 25
+_CHAT_FONT_SIZE = 36
+_CHAT_BOTTOM_MARGIN = 150
+_CHAT_TSUNO_COLOR = (92, 210, 96)     # LINE グリーン
+_CHAT_MEGANE_COLOR = (255, 255, 255)  # 白
+_CHAT_TSUNO_TEXT = (255, 255, 255)    # 白文字
+_CHAT_MEGANE_TEXT = (30, 30, 30)      # 黒文字
+_CHAT_PAST_OPACITY = 0.7
+
+
+def _make_circular_icon(img_path: Path, size: int) -> Image.Image:
+  """画像を正方形にクロップし円形マスクを適用した RGBA Image を返す"""
+  img = Image.open(img_path).convert("RGBA")
+  # 正方形クロップ（上部優先＝顔が映りやすい）
+  side = min(img.width, img.height)
+  left = (img.width - side) // 2
+  img = img.crop((left, 0, left + side, side))
+  img = img.resize((size, size), Image.LANCZOS)
+  # 円形マスク
+  mask = Image.new("L", (size, size), 0)
+  ImageDraw.Draw(mask).ellipse((0, 0, size - 1, size - 1), fill=255)
+  img.putalpha(mask)
+  return img
+
+
+def _wrap_text_for_bubble(
+  text: str, font: ImageFont.FreeTypeFont, max_width: int,
+) -> list[str]:
+  """ピクセル幅ベースでテキストを折り返す"""
+  lines: list[str] = []
+  current = ""
+  for char in text:
+    test = current + char
+    bbox = font.getbbox(test)
+    if (bbox[2] - bbox[0]) > max_width and current:
+      lines.append(current)
+      current = char
+    else:
+      current = test
+  if current:
+    lines.append(current)
+  return lines or [text]
+
+
+def _measure_bubble(
+  text: str, font: ImageFont.FreeTypeFont, max_text_width: int,
+) -> tuple[int, int, list[str]]:
+  """吹き出しのサイズ（幅, 高さ）と折り返し済み行リストを返す"""
+  lines = _wrap_text_for_bubble(text, font, max_text_width)
+  line_bboxes = [font.getbbox(line) for line in lines]
+  line_heights = [bb[3] - bb[1] for bb in line_bboxes]
+  line_widths = [bb[2] - bb[0] for bb in line_bboxes]
+  line_spacing = int(_CHAT_FONT_SIZE * 0.3)
+
+  text_w = max(line_widths) if line_widths else 0
+  text_h = sum(line_heights) + line_spacing * max(0, len(lines) - 1)
+
+  bubble_w = text_w + _CHAT_BUBBLE_PADDING * 2
+  bubble_h = text_h + _CHAT_BUBBLE_PADDING * 2
+  return bubble_w, bubble_h, lines
+
+
+def _draw_chat_bubble(
+  draw: ImageDraw.ImageDraw,
+  text: str,
+  x: int,
+  y: int,
+  bubble_color: tuple[int, int, int],
+  text_color: tuple[int, int, int],
+  font: ImageFont.FreeTypeFont,
+  max_text_width: int,
+) -> tuple[int, int]:
+  """角丸吹き出し + テキストを描画し (bubble_width, bubble_height) を返す"""
+  bubble_w, bubble_h, lines = _measure_bubble(text, font, max_text_width)
+  r = _CHAT_BUBBLE_RADIUS
+
+  # 角丸矩形
+  draw.rounded_rectangle(
+    (x, y, x + bubble_w, y + bubble_h),
+    radius=r,
+    fill=(*bubble_color, 255),
+  )
+
+  # テキスト描画
+  line_spacing = int(_CHAT_FONT_SIZE * 0.3)
+  ty = y + _CHAT_BUBBLE_PADDING
+  for line in lines:
+    draw.text(
+      (x + _CHAT_BUBBLE_PADDING, ty),
+      line,
+      font=font,
+      fill=(*text_color, 255),
+    )
+    bbox = font.getbbox(line)
+    ty += (bbox[3] - bbox[1]) + line_spacing
+
+  return bubble_w, bubble_h
+
+
+def _render_chat_frame(
+  width: int,
+  height: int,
+  bg_image: Image.Image | None,
+  dialogue: list[DialogueLine],
+  current_idx: int,
+  tsuno_icon: Image.Image,
+  megane_icon: Image.Image,
+  font: ImageFont.FreeTypeFont,
+) -> tuple[np.ndarray, np.ndarray]:
+  """チャット画面1フレームを描画して (合成済みRGB, チャットオーバーレイRGBA) を返す"""
+  # 背景
+  if bg_image:
+    canvas = bg_image.copy()
+  else:
+    canvas = Image.new("RGB", (width, height), BG_COLOR)
+
+  max_text_width = _CHAT_BUBBLE_MAX_WIDTH - _CHAT_BUBBLE_PADDING * 2
+  icon_size = _CHAT_ICON_SIZE
+
+  # 各メッセージの吹き出しサイズを事前計算（0 .. current_idx）
+  bubble_infos: list[tuple[int, int, str]] = []  # (w, h, speaker)
+  for idx in range(current_idx + 1):
+    line = dialogue[idx]
+    bw, bh, _ = _measure_bubble(line.text, font, max_text_width)
+    bubble_infos.append((bw, bh, line.speaker))
+
+  # 下から上に配置: 最新メッセージが一番下
+  y_bottom = height - _CHAT_BOTTOM_MARGIN
+  visible_start = 0
+
+  # 表示に必要な縦幅を計算し、表示開始インデックスを決定
+  total_needed = 0
+  for idx in range(current_idx, -1, -1):
+    _, bh, _ = bubble_infos[idx]
+    row_h = max(bh, icon_size) + _CHAT_MSG_SPACING
+    total_needed += row_h
+    if total_needed > y_bottom - 100:  # 上部100pxマージン
+      visible_start = idx + 1
+      break
+
+  # チャットオーバーレイ（半透明対応のため RGBA）
+  overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+  draw = ImageDraw.Draw(overlay)
+
+  y_cursor = y_bottom
+  for idx in range(current_idx, visible_start - 1, -1):
+    line = dialogue[idx]
+    bw, bh, speaker = bubble_infos[idx]
+    is_current = idx == current_idx
+    row_h = max(bh, icon_size)
+    y_cursor -= row_h
+
+    if speaker == "tsuno":
+      icon_x = _CHAT_ICON_MARGIN
+      bubble_x = icon_x + icon_size + _CHAT_ICON_GAP
+      icon_img = tsuno_icon
+      bubble_color = _CHAT_TSUNO_COLOR
+      text_color = _CHAT_TSUNO_TEXT
+    else:
+      bubble_x = width - _CHAT_ICON_MARGIN - icon_size - _CHAT_ICON_GAP - bw
+      icon_x = width - _CHAT_ICON_MARGIN - icon_size
+      icon_img = megane_icon
+      bubble_color = _CHAT_MEGANE_COLOR
+      text_color = _CHAT_MEGANE_TEXT
+
+    icon_y = y_cursor + (row_h - icon_size) // 2
+    bubble_y = y_cursor + (row_h - bh) // 2
+
+    if not is_current:
+      # 過去メッセージ: 半透明のバブルを描画
+      bubble_layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+      bd = ImageDraw.Draw(bubble_layer)
+      _draw_chat_bubble(
+        bd, line.text, bubble_x, bubble_y,
+        bubble_color, text_color, font, max_text_width,
+      )
+      # アイコンも貼り付け
+      bubble_layer.paste(icon_img, (icon_x, icon_y), icon_img)
+      # 全体の不透明度を下げる
+      alpha = bubble_layer.split()[3]
+      alpha = alpha.point(lambda a: int(a * _CHAT_PAST_OPACITY))
+      bubble_layer.putalpha(alpha)
+      overlay = Image.alpha_composite(overlay, bubble_layer)
+    else:
+      # 現在のメッセージ: 通常描画
+      _draw_chat_bubble(
+        draw, line.text, bubble_x, bubble_y,
+        bubble_color, text_color, font, max_text_width,
+      )
+      overlay.paste(icon_img, (icon_x, icon_y), icon_img)
+
+    y_cursor -= _CHAT_MSG_SPACING
+
+  # 背景にオーバーレイ合成
+  canvas = canvas.convert("RGBA")
+  result = Image.alpha_composite(canvas, overlay)
+  return np.array(result.convert("RGB")), np.array(overlay)
+
+
 def compose_portrait(
   dialogue: list[DialogueLine],
   audio_paths: list[Path],
@@ -533,7 +742,7 @@ def compose_portrait(
   bg_image_path: Path | None = None,
   title: str = "",
 ) -> None:
-  """9:16 縦長動画を合成する
+  """9:16 縦長動画を合成する（LINE チャット風レイアウト）
 
   Args:
     dialogue: セリフリスト
@@ -543,11 +752,34 @@ def compose_portrait(
     title: エピソードタイトル（空文字ならOPスキップ）
   """
   width, height = PORTRAIT_SIZE
-  char_height = int(height * 0.3)
 
-  # キャラクター画像セットを事前読み込み
-  tsuno_assets = load_character_assets("tsuno", char_height)
-  megane_assets = load_character_assets("megane", char_height)
+  # 背景画像の準備
+  bg_image = None
+  if bg_image_path and bg_image_path.exists():
+    bg_image = Image.open(bg_image_path).convert("RGB")
+    bg_image = bg_image.resize((width, height), Image.LANCZOS)
+
+  # キャラアイコン（normal_closed を使用）
+  tsuno_icon_path = IMAGES_DIR / "tsuno" / "normal_closed.png"
+  megane_icon_path = IMAGES_DIR / "megane" / "normal_closed.png"
+  tsuno_icon = _make_circular_icon(tsuno_icon_path, _CHAT_ICON_SIZE)
+  megane_icon = _make_circular_icon(megane_icon_path, _CHAT_ICON_SIZE)
+
+  # フォント
+  font = ImageFont.truetype(str(FONT_PATH), _CHAT_FONT_SIZE)
+
+  # ロゴ画像の準備（プルプル用）
+  portrait_logo_arr = None
+  portrait_logo_w = portrait_logo_h = 0
+  if DIALOGUE_LOGO_PATH.exists():
+    _p_logo = Image.open(DIALOGUE_LOGO_PATH).convert("RGBA")
+    portrait_logo_w = int(width * 0.5)
+    _p_logo_aspect = _p_logo.width / _p_logo.height
+    portrait_logo_h = int(portrait_logo_w / _p_logo_aspect)
+    _p_logo = _p_logo.resize(
+      (portrait_logo_w, portrait_logo_h), Image.LANCZOS,
+    )
+    portrait_logo_arr = np.array(_p_logo)
 
   clips = []
 
@@ -565,41 +797,51 @@ def compose_portrait(
       i + 1, len(dialogue), line.text[:15], duration,
     )
 
-    # 背景
-    bg = _create_background_clip(bg_image_path, (width, height), duration)
+    # チャットフレーム描画（背景+チャットオーバーレイを分離取得）
+    composite_arr, chat_overlay_arr = _render_chat_frame(
+      width, height, bg_image, dialogue, i,
+      tsuno_icon, megane_icon, font,
+    )
 
-    # アクティブスピーカー判定
-    tsuno_active = line.speaker == "tsuno"
-    megane_active = line.speaker == "megane"
-    emotion = getattr(line, "emotion", "normal") or "normal"
+    scene_layers = []
 
-    # つの画像（上部配置）
-    tsuno_brightness = 1.0 if tsuno_active else 0.5
-    tsuno_scale = 1.1 if tsuno_active else 1.0
-    tsuno_clip = _create_static_character_clip(
-      tsuno_assets, emotion, duration,
-      tsuno_brightness, tsuno_scale,
-    ).with_position(("center", int(height * 0.05)))
+    # 1) 背景レイヤー（bg_image または BG_COLOR）
+    if bg_image:
+      bg_clip = ImageClip(np.array(bg_image)).with_duration(duration)
+    else:
+      bg_clip = ColorClip(
+        size=(width, height), color=BG_COLOR,
+      ).with_duration(duration)
+    scene_layers.append(bg_clip)
 
-    # めがね画像（下部配置）
-    megane_brightness = 1.0 if megane_active else 0.5
-    megane_scale = 1.1 if megane_active else 1.0
-    megane_clip = _create_static_character_clip(
-      megane_assets, emotion, duration,
-      megane_brightness, megane_scale,
-    ).with_position(("center", int(height * 0.55)))
+    # 2) ロゴレイヤー（プルプル震え、背景とチャットの間）
+    if portrait_logo_arr is not None:
+      logo_clip = (
+        ImageClip(portrait_logo_arr, transparent=True)
+        .with_duration(duration)
+      )
+      logo_bx = (width - portrait_logo_w) // 2
+      logo_by = (height - portrait_logo_h) // 2
+      logo_clip = logo_clip.with_position(
+        lambda t, bx=logo_bx, by=logo_by: (
+          bx + int(3 * np.sin(2 * np.pi * 2.5 * t)),
+          by + int(3 * np.sin(2 * np.pi * 3.0 * t + np.pi / 3)),
+        ),
+      )
+      scene_layers.append(logo_clip)
 
-    # 字幕（中間エリア）
-    subtitle = _create_subtitle_clip(
-      line.text, duration, max_width=int(width * 0.9)
-    ).with_position(("center", int(height * 0.42)))
+    # 3) チャットオーバーレイレイヤー（吹き出し + アイコン）
+    chat_clip = (
+      ImageClip(chat_overlay_arr, transparent=True)
+      .with_duration(duration)
+    )
+    scene_layers.append(chat_clip)
 
-    # セリフクリップを合成
-    scene = CompositeVideoClip(
-      [bg, tsuno_clip, megane_clip, subtitle],
-      size=(width, height),
-    ).with_duration(duration).with_audio(audio)
-
+    scene = (
+      CompositeVideoClip(scene_layers, size=(width, height))
+      .with_duration(duration)
+      .with_audio(audio)
+    )
     clips.append(scene)
 
   # 全セリフを結合して出力

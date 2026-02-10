@@ -1,12 +1,14 @@
 """キャラクター表情・口パク画像を Gemini API で一括生成するスクリプト
 
 使い方:
-  .venv/bin/python scripts/generate_character_assets.py
+  .venv/bin/python scripts/generate_character_assets.py          # 未生成分のみ
+  .venv/bin/python scripts/generate_character_assets.py --force   # 全て再生成
 
-既存のキャラクター画像を参考に、表情・口の状態バリエーションを生成して
-assets/images/{speaker}/ に保存します。
+assets/images/chara.png から分割した各キャラのリファレンス画像を参考に、
+表情・口の状態バリエーションを生成して assets/images/{speaker}/ に保存する。
 """
 
+import argparse
 import sys
 import time
 from io import BytesIO
@@ -29,23 +31,23 @@ IMAGE_MODEL = "gemini-3-pro-image-preview"
 # キャラクター定義
 CHARACTERS = {
   "tsuno": {
-    "image": "ririn.png",
+    "image": "tsuno_ref.png",
     "base_prompt": (
       "chibi SD anime style, face-only close-up, head only, "
       "purple short bob hair, two small dark horns on top of head, "
-      "pink-purple eyes, light skin, "
-      "transparent checkered background (PNG alpha), thick bold outline, "
-      "front view, same face angle and size as reference image"
+      "pink-purple eyes, light skin, sharp fang tooth, "
+      "transparent background (PNG alpha), thick bold outline, "
+      "front view, same face size and viewing angle as reference image"
     ),
   },
   "megane": {
-    "image": "tsukuyomi.png",
+    "image": "megane_ref.png",
     "base_prompt": (
       "chibi SD anime style, face-only close-up, head only, "
       "dark navy long hair with straight bangs, round glasses, "
       "blue-grey eyes, light skin, "
-      "transparent checkered background (PNG alpha), thick bold outline, "
-      "front view, same face angle and size as reference image"
+      "transparent background (PNG alpha), thick bold outline, "
+      "front view, same face size and viewing angle as reference image"
     ),
   },
 }
@@ -131,6 +133,13 @@ def generate_variant(
 
 
 def main():
+  parser = argparse.ArgumentParser(description="キャラクター表情画像の自動生成")
+  parser.add_argument(
+    "--force", action="store_true",
+    help="既存画像を上書きして全て再生成する",
+  )
+  args = parser.parse_args()
+
   if not GEMINI_API_KEY:
     print("エラー: GEMINI_API_KEY が設定されていません。")
     sys.exit(1)
@@ -139,6 +148,8 @@ def main():
 
   print("=" * 50)
   print("キャラクター表情画像の自動生成")
+  if args.force:
+    print("(--force: 既存画像を上書き)")
   print("=" * 50)
 
   total = 0
@@ -159,8 +170,8 @@ def main():
     for variant_name, variant_prompt in VARIANTS.items():
       output_path = output_dir / f"{variant_name}.png"
 
-      # 既に存在する場合はスキップ
-      if output_path.exists():
+      # 既に存在する場合（--force でなければスキップ）
+      if output_path.exists() and not args.force:
         print(f"  - {variant_name}.png（既存、スキップ）")
         success += 1
         total += 1

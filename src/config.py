@@ -17,7 +17,7 @@ FONTS_DIR = ASSETS_DIR / "fonts"
 OUTPUT_DIR = PROJECT_ROOT / "output"
 
 # フォント設定
-FONT_NAME = os.getenv("FONT_NAME", "NotoSansJP-Bold.ttf")
+FONT_NAME = os.getenv("FONT_NAME", "TAユニバーサルライン_DSP_E.ttf")
 FONT_PATH = FONTS_DIR / FONT_NAME
 
 # Gemini API 設定
@@ -54,7 +54,7 @@ SUBTITLE_FONT_SIZE = 48
 SUBTITLE_COLOR = (255, 255, 255)
 SUBTITLE_STROKE_WIDTH = 2
 SUBTITLE_STROKE_COLOR = (0, 0, 0)
-DIALOGUE_LOGO_PATH = IMAGES_DIR / "logo" / "logo_alfa.png"
+DIALOGUE_LOGO_PATH = IMAGES_DIR / "logo" / "logo_white.png"
 
 # 背景画像生成設定
 BG_IMAGE_MODEL = "gemini-3-pro-image-preview"
