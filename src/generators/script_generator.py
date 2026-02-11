@@ -32,8 +32,9 @@ _SYSTEM_PROMPT = f"""
 - めがねは丁寧語で論理的に話す
 - emotion は "normal", "happy", "angry", "sad", "surprised" のいずれか
 - emotion の使用頻度: "normal" と "happy" を中心に使い、"angry" はなるべく使わない（全体の5%以下）
-- note_content はMarkdown形式で1000〜2000文字程度の解説記事
-- x_post_content は140文字以内のX投稿文（ハッシュタグ含む）
+- セリフに読みアノテーション `<>` や `[[]]` は一切付けないこと。プレーンなテキストのみで書く
+- note_content はMarkdown形式で1000〜2000文字程度の解説記事。末尾に「動画はこちら: {{youtube_url}}」を含める
+- x_post_content は140文字以内のX投稿文（ハッシュタグ含む）。{{youtube_url}} を含める（後から実URLに置換される）
 
 ## 出力JSON形式（厳密に従うこと）
 {{
@@ -42,8 +43,8 @@ _SYSTEM_PROMPT = f"""
     {{ "speaker": "tsuno", "text": "セリフ", "emotion": "感情" }},
     {{ "speaker": "megane", "text": "セリフ", "emotion": "感情" }}
   ],
-  "note_content": "# タイトル\\n\\n本文...",
-  "x_post_content": "投稿文 #へぼ談"
+  "note_content": "# タイトル\\n\\n本文...\\n\\n動画はこちら: {{youtube_url}}",
+  "x_post_content": "投稿文 {{youtube_url}} #へぼ談"
 }}
 """.strip()
 
@@ -92,17 +93,25 @@ class ScriptGenerator:
         else:
           raise
 
-  def generate(self, theme: str, max_retries: int = 2) -> ScriptData:
+  def generate(
+    self, theme: str, *, instructions: str | None = None, max_retries: int = 2,
+  ) -> ScriptData:
     """テーマから台本を生成する
 
     Args:
       theme: トークテーマ
+      instructions: マークダウン形式の詳細指示（テーマ・趣旨・追加指示など）
       max_retries: JSONパースエラー時のリトライ回数
 
     Returns:
       ScriptData: 生成された台本データ
     """
-    user_prompt = f"以下のテーマについて台本を作成してください。\n\nテーマ: {theme}"
+    if instructions:
+      user_prompt = (
+        f"以下の指示に基づいて台本を作成してください。\n\n{instructions}"
+      )
+    else:
+      user_prompt = f"以下のテーマについて台本を作成してください。\n\nテーマ: {theme}"
 
     for attempt in range(max_retries + 1):
       try:

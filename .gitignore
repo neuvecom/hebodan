@@ -7,8 +7,9 @@ build/
 .venv/
 venv/
 
-# 環境変数
+# 環境変数・認証情報
 .env
+credentials/
 
 # 生成物
 output/

@@ -43,6 +43,7 @@ from src.config import (
 from src.models import DialogueLine
 from src.utils.audio_analyzer import analyze_mouth_states
 from src.utils.character_assets import CharacterFrames, load_character_assets
+from src.utils.reading_annotations import remove_reading_annotations, unwrap_display_only
 from src.utils.text_renderer import render_text
 
 logger = logging.getLogger(__name__)
@@ -496,9 +497,10 @@ def compose_landscape(
       )
       scene_layers.insert(1, logo_clip)  # 背景の上、キャラの下
 
-    # 字幕（下部40%エリア中央）
+    # 字幕（下部40%エリア中央）— [[表示専用]]を展開し、読みアノテーションを除去して表示
+    display_text = unwrap_display_only(remove_reading_annotations(line.text))
     subtitle = _create_subtitle_clip(
-      line.text, duration, max_width=int(width * 0.85),
+      display_text, duration, max_width=int(width * 0.85),
     )
     sub_h = subtitle.size[1]
     subtitle_y = text_area_top + (height - text_area_top - sub_h) // 2 - 50
@@ -655,11 +657,17 @@ def _render_chat_frame(
   max_text_width = _CHAT_BUBBLE_MAX_WIDTH - _CHAT_BUBBLE_PADDING * 2
   icon_size = _CHAT_ICON_SIZE
 
+  # 各メッセージの表示テキスト（[[表示専用]]展開＋読み仮名アノテーション除去済み）
+  display_texts = [
+    unwrap_display_only(remove_reading_annotations(dialogue[idx].text))
+    for idx in range(current_idx + 1)
+  ]
+
   # 各メッセージの吹き出しサイズを事前計算（0 .. current_idx）
   bubble_infos: list[tuple[int, int, str]] = []  # (w, h, speaker)
   for idx in range(current_idx + 1):
     line = dialogue[idx]
-    bw, bh, _ = _measure_bubble(line.text, font, max_text_width)
+    bw, bh, _ = _measure_bubble(display_texts[idx], font, max_text_width)
     bubble_infos.append((bw, bh, line.speaker))
 
   # 下から上に配置: 最新メッセージが一番下
@@ -709,7 +717,7 @@ def _render_chat_frame(
       bubble_layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
       bd = ImageDraw.Draw(bubble_layer)
       _draw_chat_bubble(
-        bd, line.text, bubble_x, bubble_y,
+        bd, display_texts[idx], bubble_x, bubble_y,
         bubble_color, text_color, font, max_text_width,
       )
       # アイコンも貼り付け
@@ -722,7 +730,7 @@ def _render_chat_frame(
     else:
       # 現在のメッセージ: 通常描画
       _draw_chat_bubble(
-        draw, line.text, bubble_x, bubble_y,
+        draw, display_texts[idx], bubble_x, bubble_y,
         bubble_color, text_color, font, max_text_width,
       )
       overlay.paste(icon_img, (icon_x, icon_y), icon_img)

@@ -27,6 +27,9 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 # COEIROINK API 設定
 COEIROINK_HOST = os.getenv("COEIROINK_HOST", "http://localhost:50032")
 
+# 読み辞書
+READING_DICT_PATH = PROJECT_ROOT / "reading_dict.txt"
+
 # キャラクター設定
 CHARACTERS = {
   "tsuno": {
@@ -76,3 +79,16 @@ OPENING_VOICE_MEGANE_PATH = ASSETS_DIR / "audio" / "se" / "opening_megane.wav"
 # リップシンク設定
 LIPSYNC_THRESHOLD = 0.15       # 口を開く振幅閾値（0.0-1.0、正規化済み）
 LIPSYNC_MIN_OPEN_FRAMES = 2   # チャタリング防止の最低フレーム数
+
+# YouTube API 設定
+YOUTUBE_CLIENT_SECRET = PROJECT_ROOT / os.getenv(
+  "YOUTUBE_CLIENT_SECRET", "credentials/youtube_client_secret.json",
+)
+YOUTUBE_TOKEN_PATH = PROJECT_ROOT / "credentials" / "youtube_token.json"
+YOUTUBE_CATEGORY_ID = os.getenv("YOUTUBE_CATEGORY_ID", "22")
+
+# X (Twitter) API 設定
+X_API_KEY = os.getenv("X_API_KEY", "")
+X_API_SECRET = os.getenv("X_API_SECRET", "")
+X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN", "")
+X_ACCESS_TOKEN_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET", "")

@@ -5,8 +5,15 @@ from pathlib import Path
 
 import requests
 
-from src.config import COEIROINK_HOST, CHARACTERS
+from src.config import COEIROINK_HOST, CHARACTERS, READING_DICT_PATH
 from src.models import DialogueLine
+from src.utils.reading_annotations import (
+  apply_reading_dict,
+  convert_reading_annotations,
+  load_reading_dict,
+  remove_reading_annotations,
+  strip_display_only,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +23,7 @@ class AudioGenerator:
 
   def __init__(self):
     self.host = COEIROINK_HOST
+    self._reading_dict = load_reading_dict(READING_DICT_PATH)
     self._check_connection()
 
   def _check_connection(self):
@@ -97,13 +105,20 @@ class AudioGenerator:
       filename = f"{i + 1:03d}_{line.speaker}.wav"
       output_path = output_dir / filename
 
+      # TTS用テキスト前処理:
+      # 1. [[表示専用]] 除去 → 2. 漢字アノテーション変換 → 3. 残余タグ除去 → 4. 辞書適用
+      tts_text = strip_display_only(line.text)
+      tts_text = convert_reading_annotations(tts_text)
+      tts_text = remove_reading_annotations(tts_text)
+      tts_text = apply_reading_dict(tts_text, self._reading_dict)
+
       logger.info(
         "音声生成中 [%d/%d]: %s「%s」",
         i + 1, len(dialogue), char_config["name"], line.text[:20],
       )
 
-      prosody = self._estimate_prosody(line.text, speaker_uuid, style_id)
-      wav_data = self._synthesize(line.text, prosody, speaker_uuid, style_id)
+      prosody = self._estimate_prosody(tts_text, speaker_uuid, style_id)
+      wav_data = self._synthesize(tts_text, prosody, speaker_uuid, style_id)
 
       output_path.write_bytes(wav_data)
       audio_paths.append(output_path)
