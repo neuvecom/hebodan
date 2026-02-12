@@ -22,6 +22,26 @@ logging.basicConfig(
 logger = logging.getLogger("hebodan.upload")
 
 
+def _extract_intro(note_content: str) -> str:
+  """note_content から H1 直下の段落（最初の ## まで）を抽出する"""
+  lines = note_content.split("\n")
+  intro_lines = []
+  found_h1 = False
+  for line in lines:
+    stripped = line.strip()
+    if not found_h1:
+      if stripped.startswith("# ") and not stripped.startswith("## "):
+        found_h1 = True
+      continue
+    # 次の見出しに到達したら終了
+    if stripped.startswith("## "):
+      break
+    intro_lines.append(line)
+  # 前後の空行を除去
+  text = "\n".join(intro_lines).strip()
+  return text if text else note_content[:200]
+
+
 def main():
   parser = argparse.ArgumentParser(
     description="Hebodan - YouTube アップロード + テキスト生成",
@@ -68,10 +88,14 @@ def main():
 
   # YouTube アップロード
   privacy = "public" if args.public else "private"
-  description = f"{script.meta.title}\n\n#へぼ談 #ゆっくり解説"
+  # note_content の H1 直下の段落を概要に使用
+  description = _extract_intro(script.note_content)
+  description += "\n\n#へぼ談 #ゆっくり解説"
+  # YouTube タイトルから改行を除去（サムネ/OP用の \n を含む場合）
+  yt_title = script.meta.title.replace("\n", "")
   youtube_url = upload_to_youtube(
     video_path=video_path,
-    title=script.meta.title,
+    title=yt_title,
     description=description,
     thumbnail_path=thumbnail_path if thumbnail_path.exists() else None,
     privacy=privacy,

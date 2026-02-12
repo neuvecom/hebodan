@@ -1,0 +1,27 @@
+name: 毎日の記念日メール送信
+
+on:
+  schedule:
+    # 毎日 0:15 JST（= 15:15 UTC）
+    - cron: "15 15 * * *"
+  workflow_dispatch:
+
+jobs:
+  send-kinenbi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Fetch and send kinenbi email
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+        run: python scripts/daily_kinenbi.py

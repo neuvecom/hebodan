@@ -87,22 +87,23 @@ def render_text(
 def _wrap_text_by_width(
   text: str, font: ImageFont.FreeTypeFont, max_width: int
 ) -> list[str]:
-  """ピクセル幅ベースでテキストを折り返す"""
+  """ピクセル幅ベースでテキストを折り返す（\\n による明示的改行に対応）"""
   lines = []
-  current_line = ""
 
-  for char in text:
-    test_line = current_line + char
-    bbox = font.getbbox(test_line)
-    width = bbox[2] - bbox[0]
+  # まず明示的な改行で分割し、各セグメントをピクセル幅で折り返す
+  for segment in text.split("\n"):
+    current_line = ""
+    for char in segment:
+      test_line = current_line + char
+      bbox = font.getbbox(test_line)
+      width = bbox[2] - bbox[0]
 
-    if width > max_width and current_line:
-      lines.append(current_line)
-      current_line = char
-    else:
-      current_line = test_line
+      if width > max_width and current_line:
+        lines.append(current_line)
+        current_line = char
+      else:
+        current_line = test_line
 
-  if current_line:
     lines.append(current_line)
 
   return lines
