@@ -103,7 +103,10 @@ def main():
   logger.info("=" * 50)
 
   # YouTube アップロード（サムネイルはショートでは不要）
+  # タイトルに #Shorts を付けて YouTube にショート動画として認識させる
   yt_title = title.replace("\n", "")
+  if "#Shorts" not in yt_title:
+    yt_title = f"{yt_title} #Shorts"
   shorts_url = upload_to_youtube(
     video_path=video_path,
     title=yt_title,

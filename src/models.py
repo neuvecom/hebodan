@@ -10,6 +10,7 @@ class DialogueLine:
   speaker: str
   text: str
   emotion: str = "normal"
+  shorts_skip: bool = False
 
 
 @dataclass
@@ -39,6 +40,7 @@ class ScriptData:
         speaker=line["speaker"],
         text=line["text"],
         emotion=line.get("emotion", "normal"),
+        shorts_skip=line.get("shorts_skip", False),
       )
       for line in data["dialogue"]
     ]

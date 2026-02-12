@@ -32,6 +32,10 @@ _SYSTEM_PROMPT = f"""
 - めがねは丁寧語で論理的に話す
 - emotion は "normal", "happy", "angry", "sad", "surprised" のいずれか
 - emotion の使用頻度: "normal" と "happy" を中心に使い、"angry" はなるべく使わない（全体の5%以下）
+- shorts_skip: ショート動画（縦動画）で省略しても会話が成立するセリフに true を付ける
+  - 脱線・雑談・補足説明・繰り返し・相槌のみのセリフなどが対象
+  - 会話の流れに必須のセリフには付けない（デフォルトは false）
+  - 全体の20〜30%程度のセリフに付けること（3分以内に収まるように）
 - セリフに読みアノテーション `<>` や `[[]]` は一切付けないこと。プレーンなテキストのみで書く
 - note_content はMarkdown形式で1000〜2000文字程度の解説記事。末尾に「動画はこちら: {{youtube_url}}」を含める
 - x_post_content は140文字以内のX投稿文（ハッシュタグ含む）。{{youtube_url}} を含める（後から実URLに置換される）
@@ -40,8 +44,8 @@ _SYSTEM_PROMPT = f"""
 {{
   "meta": {{ "theme": "テーマ名", "title": "動画タイトル" }},
   "dialogue": [
-    {{ "speaker": "tsuno", "text": "セリフ", "emotion": "感情" }},
-    {{ "speaker": "megane", "text": "セリフ", "emotion": "感情" }}
+    {{ "speaker": "tsuno", "text": "セリフ", "emotion": "感情", "shorts_skip": false }},
+    {{ "speaker": "megane", "text": "セリフ", "emotion": "感情", "shorts_skip": true }}
   ],
   "note_content": "# タイトル\\n\\n本文...\\n\\n動画はこちら: {{youtube_url}}",
   "x_post_content": "投稿文 {{youtube_url}} #へぼ談"

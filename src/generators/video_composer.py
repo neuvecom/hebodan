@@ -14,10 +14,23 @@ from moviepy import (
   VideoClip,
   concatenate_videoclips,
 )
+from moviepy.audio.fx import AudioFadeOut
 
 from src.config import (
   BG_COLOR,
   DIALOGUE_LOGO_PATH,
+  ENDING_CALL_TEXT,
+  ENDING_CALL_VOICE_MEGANE_PATH,
+  ENDING_CALL_VOICE_TSUNO_PATH,
+  ENDING_FADE_IN,
+  ENDING_FADE_OUT,
+  ENDING_TEXT_COLOR,
+  ENDING_TEXT_FONT_SIZE,
+  ENDING_TEXT_STROKE_COLOR,
+  ENDING_TEXT_STROKE_WIDTH,
+  ENDING_VOICE_GAP,
+  ENDING_VOICE_MEGANE_PATH,
+  ENDING_VOICE_TSUNO_PATH,
   FONT_PATH,
   IMAGES_DIR,
   LANDSCAPE_SIZE,
@@ -34,6 +47,7 @@ from src.config import (
   OPENING_VOICE_MEGANE_PATH,
   OPENING_VOICE_TSUNO_PATH,
   PORTRAIT_SIZE,
+  SHORTS_MAX_DURATION,
   SUBTITLE_COLOR,
   SUBTITLE_FONT_SIZE,
   SUBTITLE_STROKE_COLOR,
@@ -252,6 +266,286 @@ def _create_opening_clip(
   opening.fps = VIDEO_FPS
   logger.info("オープニングクリップ生成完了 (%.1f秒)", duration)
   return opening
+
+
+def _create_ending_clip(
+  size: tuple[int, int],
+  bg_image_path: Path | None = None,
+) -> CompositeVideoClip | None:
+  """エンディングクリップを生成する（チャンネル登録誘導＋撤収雑談＋フェードアウト）
+
+  キャラのみフェードアウトし、テキスト・ロゴは最後まで表示。
+  縦長はキャラがブロック崩しのボールのように跳ね回る。
+
+  ボイスファイルが存在しない場合は None を返す（EDスキップ）。
+
+  Args:
+    size: 動画サイズ (width, height)
+    bg_image_path: 本編の背景画像パス
+  """
+  # ボイスファイルの存在チェック（最低限callボイスが必要）
+  if not ENDING_CALL_VOICE_TSUNO_PATH.exists():
+    logger.warning("EDボイスが見つかりません: %s（EDスキップ）", ENDING_CALL_VOICE_TSUNO_PATH)
+    return None
+
+  width, height = size
+  is_portrait = height > width
+
+  # --- 音声読み込みとタイムライン計算 ---
+  call_tsuno = AudioFileClip(str(ENDING_CALL_VOICE_TSUNO_PATH))
+  call_dur = call_tsuno.duration
+
+  audio_clips = []
+  audio_clips.append(call_tsuno.with_start(ENDING_FADE_IN))
+  if ENDING_CALL_VOICE_MEGANE_PATH.exists():
+    audio_clips.append(
+      AudioFileClip(str(ENDING_CALL_VOICE_MEGANE_PATH)).with_start(ENDING_FADE_IN),
+    )
+
+  tsuno_start = ENDING_FADE_IN + call_dur + ENDING_VOICE_GAP
+  tsuno_dur = 0.0
+  if ENDING_VOICE_TSUNO_PATH.exists():
+    tsuno_audio = AudioFileClip(str(ENDING_VOICE_TSUNO_PATH))
+    tsuno_dur = tsuno_audio.duration
+    audio_clips.append(tsuno_audio.with_start(tsuno_start))
+
+  megane_start = tsuno_start + tsuno_dur + ENDING_VOICE_GAP
+  megane_dur = 0.0
+  if ENDING_VOICE_MEGANE_PATH.exists():
+    megane_audio = AudioFileClip(str(ENDING_VOICE_MEGANE_PATH))
+    megane_dur = megane_audio.duration
+    audio_clips.append(megane_audio.with_start(megane_start))
+
+  # 総時間: めがね発話開始 + 0.5秒後からキャラ・音声フェードアウト開始
+  # フェードアウト後もテキスト・ロゴは0.5秒間表示
+  fade_out_start = megane_start + 0.5
+  duration = fade_out_start + ENDING_FADE_OUT + 0.5
+
+  logger.info(
+    "ED音声タイムライン: call=%.1fs, つの=%.1fs, めがね=%.1fs → 全体=%.1fs",
+    call_dur, tsuno_dur, megane_dur, duration,
+  )
+
+  # --- キャラクター画像の読み込み ---
+  char_scale = 0.21 if is_portrait else 0.42
+  char_h = int(height * char_scale)
+  tsuno_assets = load_character_assets("tsuno", char_h)
+  megane_assets = load_character_assets("megane", char_h)
+  tsuno_img = tsuno_assets.mouth_closed.get("happy", tsuno_assets.mouth_closed["normal"])
+  megane_img = megane_assets.mouth_closed.get("happy", megane_assets.mouth_closed["normal"])
+
+  # --- ロゴ画像 ---
+  logo_arr = None
+  logo_w = logo_h = 0
+  if DIALOGUE_LOGO_PATH.exists():
+    _logo_pil = Image.open(DIALOGUE_LOGO_PATH).convert("RGBA")
+    logo_h = int(height * (0.20 if is_portrait else 0.36))
+    _logo_aspect = _logo_pil.width / _logo_pil.height
+    logo_w = int(logo_h * _logo_aspect)
+    _logo_pil = _logo_pil.resize((logo_w, logo_h), Image.LANCZOS)
+    logo_arr = np.array(_logo_pil)
+
+  # --- テキスト画像 ---
+  text_array = render_text(
+    text=ENDING_CALL_TEXT,
+    font_path=str(FONT_PATH),
+    font_size=ENDING_TEXT_FONT_SIZE,
+    color=ENDING_TEXT_COLOR,
+    stroke_width=ENDING_TEXT_STROKE_WIDTH,
+    stroke_color=ENDING_TEXT_STROKE_COLOR,
+    max_width=int(width * 0.85),
+  )
+
+  # --- フェード計算関数 ---
+  def _char_opacity(t: float) -> float:
+    """キャラクター用: フェードイン＋フェードアウト"""
+    if t < ENDING_FADE_IN:
+      return t / ENDING_FADE_IN
+    if t < fade_out_start:
+      return 1.0
+    return max(0.0, 1.0 - (t - fade_out_start) / ENDING_FADE_OUT)
+
+  def _static_opacity(t: float) -> float:
+    """ロゴ・テキスト用: フェードインのみ、消えない"""
+    if t < ENDING_FADE_IN:
+      return t / ENDING_FADE_IN
+    return 1.0
+
+  # --- 背景 ---
+  if bg_image_path and bg_image_path.exists():
+    bg_pil = Image.open(bg_image_path).convert("RGB").resize(size, Image.LANCZOS)
+    bg = ImageClip(np.array(bg_pil)).with_duration(duration)
+  else:
+    bg = ColorClip(size=size, color=BG_COLOR).with_duration(duration)
+
+  scene_layers = [bg]
+
+  # --- ロゴクリップ（プルプル震え、消えない） ---
+  if logo_arr is not None:
+    logo_rgb = logo_arr[:, :, :3]
+    logo_base_alpha = logo_arr[:, :, 3].astype(np.float64) / 255.0
+
+    def logo_frame(t):
+      return logo_rgb
+
+    def logo_mask(t):
+      return logo_base_alpha * _static_opacity(t)
+
+    logo_clip = VideoClip(frame_function=logo_frame, duration=duration)
+    logo_clip.fps = VIDEO_FPS
+    logo_mask_clip = VideoClip(
+      frame_function=logo_mask, is_mask=True, duration=duration,
+    )
+    logo_mask_clip.fps = VIDEO_FPS
+    logo_clip = logo_clip.with_mask(logo_mask_clip)
+
+    if is_portrait:
+      logo_bx = (width - logo_w) // 2
+      logo_by = int(height * 0.38) - logo_h // 2
+    else:
+      ts_h_raw = tsuno_img.shape[0]
+      char_center_y = int(height * 0.25) + 20
+      text_area_top = int(height * 0.60)
+      tsuno_by_raw = char_center_y - ts_h_raw // 2
+      char_bottom = tsuno_by_raw + ts_h_raw
+      logo_bx = (width - logo_w) // 2
+      logo_by = (char_bottom + text_area_top) // 2 - logo_h // 2 - 70
+
+    logo_clip = logo_clip.with_position(
+      lambda t, bx=logo_bx, by=logo_by: (
+        bx + int(3 * np.sin(2 * np.pi * 2.5 * t)),
+        by + int(3 * np.sin(2 * np.pi * 3.0 * t + np.pi / 3)),
+      ),
+    )
+    scene_layers.append(logo_clip)
+
+  # --- キャラクタークリップ（フェードアウトあり） ---
+  def _make_char_clip(img_rgba: np.ndarray) -> VideoClip:
+    rgb = img_rgba[:, :, :3]
+    base_alpha = img_rgba[:, :, 3].astype(np.float64) / 255.0
+
+    def frame_fn(t):
+      return rgb
+
+    def mask_fn(t):
+      return base_alpha * _char_opacity(t)
+
+    clip = VideoClip(frame_function=frame_fn, duration=duration)
+    clip.fps = VIDEO_FPS
+    mask = VideoClip(frame_function=mask_fn, is_mask=True, duration=duration)
+    mask.fps = VIDEO_FPS
+    return clip.with_mask(mask)
+
+  if is_portrait:
+    # --- 縦長: ブロック崩しのボールのように跳ね回る ---
+    def _bounce(val: float, max_val: float) -> float:
+      """値を 0〜max_val 間で跳ね返らせる"""
+      if max_val <= 0:
+        return 0.0
+      period = 2.0 * max_val
+      phase = val % period
+      if phase < 0:
+        phase += period
+      return phase if phase <= max_val else period - phase
+
+    tsuno_clip = _make_char_clip(tsuno_img)
+    ts_w, ts_h = tsuno_clip.size
+    # つの: 左上スタート、右下方向にシュビビン
+    ts_sx, ts_sy = 50.0, 150.0
+    ts_vx, ts_vy = 420.0, 340.0
+    ts_max_x, ts_max_y = float(width - ts_w), float(height - ts_h)
+    tsuno_clip = tsuno_clip.with_position(
+      lambda t, sx=ts_sx, sy=ts_sy, vx=ts_vx, vy=ts_vy,
+      mx=ts_max_x, my=ts_max_y: (
+        int(_bounce(sx + vx * t, mx)),
+        int(_bounce(sy + vy * t, my)),
+      ),
+    )
+    scene_layers.append(tsuno_clip)
+
+    megane_clip = _make_char_clip(megane_img)
+    mg_w, mg_h = megane_clip.size
+    # めがね: 右下スタート、左上方向にシュビビン（角度違い）
+    mg_sx = float(width - mg_w - 50)
+    mg_sy = float(height * 0.6)
+    mg_vx, mg_vy = -380.0, 300.0
+    mg_max_x, mg_max_y = float(width - mg_w), float(height - mg_h)
+    megane_clip = megane_clip.with_position(
+      lambda t, sx=mg_sx, sy=mg_sy, vx=mg_vx, vy=mg_vy,
+      mx=mg_max_x, my=mg_max_y: (
+        int(_bounce(sx + vx * t, mx)),
+        int(_bounce(sy + vy * t, my)),
+      ),
+    )
+    scene_layers.append(megane_clip)
+
+  else:
+    # --- 横長: ふわふわ浮遊（従来通り） ---
+    char_center_y = int(height * 0.25) + 20
+    float_amp = 8
+    float_freq = 0.4
+
+    tsuno_clip = _make_char_clip(tsuno_img)
+    ts_w, ts_h = tsuno_clip.size
+    tsuno_bx = int(width * 0.02)
+    tsuno_by = char_center_y - ts_h // 2
+    tsuno_clip = tsuno_clip.with_position(
+      lambda t, bx=tsuno_bx, by=tsuno_by: (
+        bx, by + int(float_amp * np.sin(2 * np.pi * float_freq * t))
+      ),
+    )
+    scene_layers.append(tsuno_clip)
+
+    megane_clip = _make_char_clip(megane_img)
+    mg_w, mg_h = megane_clip.size
+    megane_bx = width - mg_w - int(width * 0.02)
+    megane_by = char_center_y - mg_h // 2
+    megane_clip = megane_clip.with_position(
+      lambda t, bx=megane_bx, by=megane_by: (
+        bx, by + int(float_amp * np.sin(2 * np.pi * float_freq * t + np.pi / 2))
+      ),
+    )
+    scene_layers.append(megane_clip)
+
+  # --- テキストクリップ（消えない） ---
+  text_rgb = text_array[:, :, :3]
+  text_base_alpha = text_array[:, :, 3].astype(np.float64) / 255.0
+  text_h = text_array.shape[0]
+
+  def text_frame(t):
+    return text_rgb
+
+  def text_mask(t):
+    return text_base_alpha * _static_opacity(t)
+
+  text_clip = VideoClip(frame_function=text_frame, duration=duration)
+  text_clip.fps = VIDEO_FPS
+  text_mask_clip = VideoClip(
+    frame_function=text_mask, is_mask=True, duration=duration,
+  )
+  text_mask_clip.fps = VIDEO_FPS
+  text_clip = text_clip.with_mask(text_mask_clip)
+
+  if is_portrait:
+    subtitle_y = int(height * 0.70) - text_h // 2
+  else:
+    text_area_top = int(height * 0.60)
+    subtitle_y = text_area_top + (height - text_area_top - text_h) // 2 - 50
+  text_clip = text_clip.with_position(("center", subtitle_y))
+  scene_layers.append(text_clip)
+
+  # --- 合成 ---
+  ending = CompositeVideoClip(scene_layers, size=size).with_duration(duration)
+
+  # --- 音声合成（フェードアウト連動） ---
+  if audio_clips:
+    composite_audio = CompositeAudioClip(audio_clips).with_duration(duration)
+    composite_audio = composite_audio.with_effects([AudioFadeOut(ENDING_FADE_OUT)])
+    ending = ending.with_audio(composite_audio)
+
+  ending.fps = VIDEO_FPS
+  logger.info("エンディングクリップ生成完了 (%.1f秒)", duration)
+  return ending
 
 
 def _apply_brightness(image_array: np.ndarray, factor: float) -> np.ndarray:
@@ -515,6 +809,11 @@ def compose_landscape(
 
     clips.append(scene)
 
+  # エンディングクリップ
+  ending = _create_ending_clip((width, height), bg_image_path)
+  if ending:
+    clips.append(ending)
+
   # 全セリフを結合して出力
   final = concatenate_videoclips(clips, method="compose")
   output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -657,9 +956,10 @@ def _render_chat_frame(
   max_text_width = _CHAT_BUBBLE_MAX_WIDTH - _CHAT_BUBBLE_PADDING * 2
   icon_size = _CHAT_ICON_SIZE
 
-  # 各メッセージの表示テキスト（[[表示専用]]展開＋読み仮名アノテーション除去済み）
+  # 各メッセージの表示テキスト（[[表示専用]]展開＋読み仮名アノテーション除去＋改行除去）
+  # チャット吹き出しは幅ベースで自動折り返しするため、明示的改行は不要
   display_texts = [
-    unwrap_display_only(remove_reading_annotations(dialogue[idx].text))
+    unwrap_display_only(remove_reading_annotations(dialogue[idx].text)).replace("\n", "")
     for idx in range(current_idx + 1)
   ]
 
@@ -789,6 +1089,27 @@ def compose_portrait(
     )
     portrait_logo_arr = np.array(_p_logo)
 
+  # Shorts用: 推定尺が3分を超える場合のみ shorts_skip セリフを除外
+  total_audio_dur = sum(
+    AudioFileClip(str(p)).duration for p in audio_paths
+  )
+  estimated_total = total_audio_dur + OPENING_DURATION + 10.0  # OP + ED概算
+  if estimated_total > SHORTS_MAX_DURATION:
+    full_count = len(dialogue)
+    filtered = [
+      (line, path) for line, path in zip(dialogue, audio_paths)
+      if not line.shorts_skip
+    ]
+    if len(filtered) < full_count:
+      logger.info(
+        "Shorts用セリフ省略: %d → %d行 (%d行スキップ, 推定%.0fs → 3分以内に調整)",
+        full_count, len(filtered), full_count - len(filtered), estimated_total,
+      )
+      dialogue = [lp[0] for lp in filtered]
+      audio_paths = [lp[1] for lp in filtered]
+  else:
+    logger.info("Shorts推定尺: %.0fs（3分以内のためセリフ省略なし）", estimated_total)
+
   clips = []
 
   # オープニングクリップ
@@ -852,8 +1173,23 @@ def compose_portrait(
     )
     clips.append(scene)
 
+  # エンディングクリップ
+  ending = _create_ending_clip((width, height), bg_image_path)
+  if ending:
+    clips.append(ending)
+
   # 全セリフを結合して出力
   final = concatenate_videoclips(clips, method="compose")
+
+  # Shorts用: 3分を超える場合は自動倍速（音声ピッチが若干上がる）
+  if final.duration > SHORTS_MAX_DURATION:
+    speed_factor = final.duration / SHORTS_MAX_DURATION
+    logger.info(
+      "Shorts用倍速: %.2fx (%.0fs → %.0fs)",
+      speed_factor, final.duration, SHORTS_MAX_DURATION,
+    )
+    final = final.with_speed_scaled(speed_factor)
+
   output_path.parent.mkdir(parents=True, exist_ok=True)
   final.write_videofile(
     str(output_path),
@@ -863,4 +1199,4 @@ def compose_portrait(
     logger="bar",
   )
   final.close()
-  logger.info("縦長動画出力完了: %s", output_path)
+  logger.info("縦長動画出力完了: %s (%.0fs)", output_path, final.duration)

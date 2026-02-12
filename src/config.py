@@ -76,6 +76,23 @@ OPENING_TITLE_STROKE_COLOR = (180, 180, 180)  # 薄グレー縁取り
 OPENING_VOICE_TSUNO_PATH = ASSETS_DIR / "audio" / "se" / "opening_tsuno.wav"
 OPENING_VOICE_MEGANE_PATH = ASSETS_DIR / "audio" / "se" / "opening_megane.wav"
 
+# エンディング設定
+ENDING_CALL_TEXT = "チャンネル登録よろしくね！"
+ENDING_TEXT_FONT_SIZE = 56
+ENDING_TEXT_COLOR = (255, 255, 255)
+ENDING_TEXT_STROKE_WIDTH = 3
+ENDING_TEXT_STROKE_COLOR = (0, 0, 0)
+ENDING_CALL_VOICE_TSUNO_PATH = AUDIO_DIR / "se" / "ending_call_tsuno.wav"
+ENDING_CALL_VOICE_MEGANE_PATH = AUDIO_DIR / "se" / "ending_call_megane.wav"
+ENDING_VOICE_TSUNO_PATH = AUDIO_DIR / "se" / "ending_tsuno.wav"
+ENDING_VOICE_MEGANE_PATH = AUDIO_DIR / "se" / "ending_megane.wav"
+ENDING_FADE_IN = 0.5       # フェードイン秒数
+ENDING_FADE_OUT = 2.0      # フェードアウト秒数
+ENDING_VOICE_GAP = 0.3     # セリフ間の間（秒）
+
+# ショート動画設定
+SHORTS_MAX_DURATION = 180.0  # YouTube Shorts上限（秒）= 3分
+
 # リップシンク設定
 LIPSYNC_THRESHOLD = 0.15       # 口を開く振幅閾値（0.0-1.0、正規化済み）
 LIPSYNC_MIN_OPEN_FRAMES = 2   # チャタリング防止の最低フレーム数
