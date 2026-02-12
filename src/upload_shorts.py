@@ -41,6 +41,70 @@ def _build_description(main_video_url: str, theme: str) -> str:
   )
 
 
+def run_upload_shorts(output_dir, public=False):
+  """YouTube にショート動画をアップロードする
+
+  Args:
+    output_dir: 動画の出力ディレクトリパス（str または Path）
+    public: True で公開、False で非公開
+
+  Returns:
+    str: アップロードされた Shorts URL
+  """
+  output_dir = Path(output_dir)
+  if not output_dir.exists():
+    raise FileNotFoundError(f"出力ディレクトリが見つかりません: {output_dir}")
+
+  script_path = output_dir / "script.json"
+  video_path = output_dir / "portrait.mp4"
+  upload_info_path = output_dir / "upload_info.json"
+
+  if not script_path.exists():
+    raise FileNotFoundError(f"台本ファイルが見つかりません: {script_path}")
+  if not video_path.exists():
+    raise FileNotFoundError(f"縦動画が見つかりません: {video_path}")
+  if not upload_info_path.exists():
+    raise FileNotFoundError(
+      f"upload_info.json が見つかりません: {upload_info_path}\n"
+      "先に upload で本編をアップロードしてください"
+    )
+
+  raw = json.loads(script_path.read_text(encoding="utf-8"))
+  script = ScriptData.from_dict(raw)
+  upload_info = json.loads(upload_info_path.read_text(encoding="utf-8"))
+  main_video_url = upload_info["youtube_url"]
+
+  privacy = "public" if public else "private"
+  title = script.meta.title
+  description = _build_description(main_video_url, script.meta.theme)
+
+  logger.info("=" * 50)
+  logger.info("YouTube ショート動画アップロード開始")
+  logger.info("タイトル: %s", title)
+  logger.info("本編URL: %s", main_video_url)
+  logger.info("プライバシー: %s", privacy)
+  logger.info("=" * 50)
+
+  yt_title = title.replace("\n", "")
+  if "#Shorts" not in yt_title:
+    yt_title = f"{yt_title} #Shorts"
+  shorts_url = upload_to_youtube(
+    video_path=video_path,
+    title=yt_title,
+    description=description,
+    privacy=privacy,
+  )
+
+  upload_info["shorts_url"] = shorts_url
+  upload_info_path.write_text(
+    json.dumps(upload_info, ensure_ascii=False, indent=2),
+    encoding="utf-8",
+  )
+
+  logger.info("ショート動画アップロード完了: %s", shorts_url)
+  return shorts_url
+
+
 def main():
   parser = argparse.ArgumentParser(
     description="Hebodan - YouTube ショート動画アップロード",
@@ -57,72 +121,13 @@ def main():
   )
   args = parser.parse_args()
 
-  output_dir = Path(args.output_dir)
-  if not output_dir.exists():
-    logger.error("出力ディレクトリが見つかりません: %s", output_dir)
+  try:
+    shorts_url = run_upload_shorts(args.output_dir, public=args.public)
+  except FileNotFoundError as e:
+    logger.error("%s", e)
     sys.exit(1)
 
-  # 必要ファイルの確認
-  script_path = output_dir / "script.json"
-  video_path = output_dir / "portrait.mp4"
-  upload_info_path = output_dir / "upload_info.json"
-
-  if not script_path.exists():
-    logger.error("台本ファイルが見つかりません: %s", script_path)
-    sys.exit(1)
-  if not video_path.exists():
-    logger.error("縦動画が見つかりません: %s", video_path)
-    sys.exit(1)
-  if not upload_info_path.exists():
-    logger.error(
-      "upload_info.json が見つかりません: %s\n"
-      "先に python -m src.upload で本編をアップロードしてください",
-      upload_info_path,
-    )
-    sys.exit(1)
-
-  # 台本・アップロード情報読み込み
-  raw = json.loads(script_path.read_text(encoding="utf-8"))
-  script = ScriptData.from_dict(raw)
-  upload_info = json.loads(upload_info_path.read_text(encoding="utf-8"))
-  main_video_url = upload_info["youtube_url"]
-
-  # 概要欄を組み立て
-  privacy = "public" if args.public else "private"
-  title = script.meta.title
-  description = _build_description(main_video_url, script.meta.theme)
-
   logger.info("=" * 50)
-  logger.info("YouTube ショート動画アップロード開始")
-  logger.info("タイトル: %s", title)
-  logger.info("本編URL: %s", main_video_url)
-  logger.info("動画: %s", video_path)
-  logger.info("プライバシー: %s", privacy)
-  logger.info("=" * 50)
-  logger.info("概要欄:\n%s", description)
-  logger.info("=" * 50)
-
-  # YouTube アップロード（サムネイルはショートでは不要）
-  # タイトルに #Shorts を付けて YouTube にショート動画として認識させる
-  yt_title = title.replace("\n", "")
-  if "#Shorts" not in yt_title:
-    yt_title = f"{yt_title} #Shorts"
-  shorts_url = upload_to_youtube(
-    video_path=video_path,
-    title=yt_title,
-    description=description,
-    privacy=privacy,
-  )
-
-  # アップロード情報を更新
-  upload_info["shorts_url"] = shorts_url
-  upload_info_path.write_text(
-    json.dumps(upload_info, ensure_ascii=False, indent=2),
-    encoding="utf-8",
-  )
-
-  logger.info("=" * 50)
-  logger.info("ショート動画アップロード完了")
   logger.info("  Shorts: %s", shorts_url)
   logger.info("=" * 50)
 

@@ -23,3 +23,5 @@ assets/fonts/*.otf
 # OS
 .DS_Store
 Thumbs.db
+
+temp/

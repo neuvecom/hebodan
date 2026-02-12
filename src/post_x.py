@@ -19,6 +19,38 @@ logging.basicConfig(
 logger = logging.getLogger("hebodan.post_x")
 
 
+def run_post_x(output_dir):
+  """X (Twitter) に投稿する
+
+  Args:
+    output_dir: 動画の出力ディレクトリパス（str または Path）
+
+  Returns:
+    str: 投稿されたツイートの URL
+  """
+  output_dir = Path(output_dir)
+  x_post_path = output_dir / "x_post.txt"
+
+  if not x_post_path.exists():
+    raise FileNotFoundError(
+      f"X投稿文ファイルが見つかりません: {x_post_path}\n"
+      "先に upload でアップロードしてください"
+    )
+
+  text = x_post_path.read_text(encoding="utf-8").strip()
+  if not text:
+    raise ValueError(f"X投稿文が空です: {x_post_path}")
+
+  logger.info("=" * 50)
+  logger.info("X 投稿")
+  logger.info("投稿文: %s", text[:100])
+  logger.info("=" * 50)
+
+  tweet_url = post_to_x(text)
+  logger.info("投稿完了: %s", tweet_url)
+  return tweet_url
+
+
 def main():
   parser = argparse.ArgumentParser(
     description="Hebodan - X (Twitter) に投稿",
@@ -30,26 +62,11 @@ def main():
   )
   args = parser.parse_args()
 
-  output_dir = Path(args.output_dir)
-  x_post_path = output_dir / "x_post.txt"
-
-  if not x_post_path.exists():
-    logger.error("X投稿文ファイルが見つかりません: %s", x_post_path)
-    logger.error("先に python -m src.upload でアップロードしてください")
+  try:
+    run_post_x(args.output_dir)
+  except (FileNotFoundError, ValueError) as e:
+    logger.error("%s", e)
     sys.exit(1)
-
-  text = x_post_path.read_text(encoding="utf-8").strip()
-  if not text:
-    logger.error("X投稿文が空です: %s", x_post_path)
-    sys.exit(1)
-
-  logger.info("=" * 50)
-  logger.info("X 投稿")
-  logger.info("投稿文: %s", text[:100])
-  logger.info("=" * 50)
-
-  tweet_url = post_to_x(text)
-  logger.info("投稿完了: %s", tweet_url)
 
 
 if __name__ == "__main__":

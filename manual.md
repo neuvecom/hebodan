@@ -2,6 +2,69 @@
 
 YouTube 動画自動生成パイプライン。テーマを入力すると、Gemini API で台本生成 → COEIROINK で音声合成 → MoviePy で動画合成を自動で行います。
 
+## クイックスタート
+
+### コマンド体系
+
+`python -m src <サブコマンド>` で全操作を統合的に実行できます。
+
+```bash
+# 全工程インタラクティブ実行（メインで使用）
+.venv/bin/python -m src run "AIの未来"
+.venv/bin/python -m src run neta/theme.md
+.venv/bin/python -m src run -s output/XXXX/script.json   # 既存台本から再開
+
+# 個別コマンド
+.venv/bin/python -m src generate "AIの未来"     # 動画生成のみ
+.venv/bin/python -m src generate -d "AIの未来"  # 台本+背景のみ（下書き）
+.venv/bin/python -m src upload output/XXXX      # YouTubeアップロード
+.venv/bin/python -m src shorts output/XXXX      # Shortsアップロード
+.venv/bin/python -m src post output/XXXX        # X投稿
+.venv/bin/python -m src status output/XXXX      # 出力ディレクトリの状態表示
+```
+
+### `run` のインタラクティブフロー
+
+`run` コマンドは対話的に全工程を進めます。各ステップで確認を挟むため、途中で中断・再開が可能です。
+
+```
+[1] 台本＋背景を生成中...
+    → 生成完了: output/20260212_200000/script.json
+
+[2] 台本を確認しますか？ [Y/n/edit]
+    y    → 台本の要約を表示（タイトル、セリフ数、冒頭5行）
+    edit → $EDITOR で script.json を開いて編集
+    n    → スキップ
+
+[3] 音声＋動画を生成しますか？ [Y/n]
+    → 音声生成 → サムネイル → 横長動画 → 縦長動画
+
+    動画を確認してから Enter を押してください...
+
+[5] YouTube にアップロードしますか？ [Y/n]
+    → アップロード完了: https://youtu.be/xxxxx
+
+[6] Shorts もアップロードしますか？ [Y/n]
+    → アップロード完了: https://youtu.be/yyyyy
+
+[7] X に投稿しますか？ [Y/n]
+    → 投稿完了
+
+完了サマリー:
+  本編: https://youtu.be/xxxxx
+  Shorts: https://youtu.be/yyyyy
+  残りの手動作業:
+    YouTube Studio で公開設定 / note記事投稿 / ニコニコ / TikTok
+```
+
+途中で `n` を選んで中断した場合、以下で再開できます:
+
+```bash
+.venv/bin/python -m src run -s output/YYYYMMDD_HHMMSS/script.json
+```
+
+---
+
 ## 全体ワークフロー
 
 ```

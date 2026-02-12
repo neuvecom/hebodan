@@ -1,6 +1,9 @@
 """COEIROINK API を使った音声合成モジュール"""
 
 import logging
+import re
+import struct
+import wave
 from pathlib import Path
 
 import requests
@@ -37,6 +40,19 @@ class AudioGenerator:
         f"COEIROINK API に接続できません ({self.host})。"
         "COEIROINKが起動しているか確認してください。"
       )
+
+  @staticmethod
+  def _generate_silence(duration: float, sample_rate: int = 44100) -> bytes:
+    """指定秒数の無音WAVバイナリを生成する"""
+    import io
+    num_samples = int(sample_rate * duration)
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+      wf.setnchannels(1)
+      wf.setsampwidth(2)
+      wf.setframerate(sample_rate)
+      wf.writeframes(struct.pack(f"<{num_samples}h", *([0] * num_samples)))
+    return buf.getvalue()
 
   def _estimate_prosody(self, text: str, speaker_uuid: str, style_id: int) -> dict:
     """プロソディ（韻律）を推定する"""
@@ -116,6 +132,14 @@ class AudioGenerator:
         "音声生成中 [%d/%d]: %s「%s」",
         i + 1, len(dialogue), char_config["name"], line.text[:20],
       )
+
+      # 発音可能な文字がない場合（記号・句読点のみ）は短い無音WAVを生成
+      if not re.search(r"[\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]", tts_text):
+        logger.info("  → 発音テキストなし、無音WAVを生成: %s", repr(tts_text))
+        wav_data = self._generate_silence(0.5)
+        output_path.write_bytes(wav_data)
+        audio_paths.append(output_path)
+        continue
 
       prosody = self._estimate_prosody(tts_text, speaker_uuid, style_id)
       wav_data = self._synthesize(tts_text, prosody, speaker_uuid, style_id)

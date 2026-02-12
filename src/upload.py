@@ -42,6 +42,76 @@ def _extract_intro(note_content: str) -> str:
   return text if text else note_content[:200]
 
 
+def run_upload(output_dir, public=False):
+  """YouTube にアップロードし、note記事/X投稿文を URL 入りで保存する
+
+  Args:
+    output_dir: 動画の出力ディレクトリパス（str または Path）
+    public: True で公開、False で非公開
+
+  Returns:
+    str: アップロードされた YouTube URL
+  """
+  output_dir = Path(output_dir)
+  if not output_dir.exists():
+    raise FileNotFoundError(f"出力ディレクトリが見つかりません: {output_dir}")
+
+  script_path = output_dir / "script.json"
+  video_path = output_dir / "landscape.mp4"
+  thumbnail_path = output_dir / "thumbnail.png"
+
+  if not script_path.exists():
+    raise FileNotFoundError(f"台本ファイルが見つかりません: {script_path}")
+  if not video_path.exists():
+    raise FileNotFoundError(f"動画ファイルが見つかりません: {video_path}")
+
+  raw = json.loads(script_path.read_text(encoding="utf-8"))
+  script = ScriptData.from_dict(raw)
+
+  privacy = "public" if public else "private"
+  description = _extract_intro(script.note_content)
+  description += "\n\n#へぼ談 #ゆっくり解説"
+  yt_title = script.meta.title.replace("\n", "")
+
+  logger.info("=" * 50)
+  logger.info("YouTube アップロード開始")
+  logger.info("タイトル: %s", yt_title)
+  logger.info("プライバシー: %s", privacy)
+  logger.info("=" * 50)
+
+  youtube_url = upload_to_youtube(
+    video_path=video_path,
+    title=yt_title,
+    description=description,
+    thumbnail_path=thumbnail_path if thumbnail_path.exists() else None,
+    privacy=privacy,
+  )
+
+  note_content = script.note_content.replace("{youtube_url}", youtube_url)
+  note_path = output_dir / "note.md"
+  note_path.write_text(note_content, encoding="utf-8")
+  logger.info("note記事保存: %s", note_path)
+
+  x_content = script.x_post_content.replace("{youtube_url}", youtube_url)
+  x_post_path = output_dir / "x_post.txt"
+  x_post_path.write_text(x_content, encoding="utf-8")
+  logger.info("X投稿文保存: %s", x_post_path)
+
+  upload_info = {
+    "youtube_url": youtube_url,
+    "privacy": privacy,
+    "title": script.meta.title,
+  }
+  info_path = output_dir / "upload_info.json"
+  info_path.write_text(
+    json.dumps(upload_info, ensure_ascii=False, indent=2),
+    encoding="utf-8",
+  )
+
+  logger.info("アップロード完了: %s", youtube_url)
+  return youtube_url
+
+
 def main():
   parser = argparse.ArgumentParser(
     description="Hebodan - YouTube アップロード + テキスト生成",
@@ -58,78 +128,14 @@ def main():
   )
   args = parser.parse_args()
 
-  output_dir = Path(args.output_dir)
-  if not output_dir.exists():
-    logger.error("出力ディレクトリが見つかりません: %s", output_dir)
+  try:
+    youtube_url = run_upload(args.output_dir, public=args.public)
+  except FileNotFoundError as e:
+    logger.error("%s", e)
     sys.exit(1)
 
-  # 必要ファイルの確認
-  script_path = output_dir / "script.json"
-  video_path = output_dir / "landscape.mp4"
-  thumbnail_path = output_dir / "thumbnail.png"
-
-  if not script_path.exists():
-    logger.error("台本ファイルが見つかりません: %s", script_path)
-    sys.exit(1)
-  if not video_path.exists():
-    logger.error("動画ファイルが見つかりません: %s", video_path)
-    sys.exit(1)
-
-  # 台本読み込み
-  raw = json.loads(script_path.read_text(encoding="utf-8"))
-  script = ScriptData.from_dict(raw)
-
   logger.info("=" * 50)
-  logger.info("YouTube アップロード開始")
-  logger.info("タイトル: %s", script.meta.title)
-  logger.info("動画: %s", video_path)
-  logger.info("プライバシー: %s", "public" if args.public else "private")
-  logger.info("=" * 50)
-
-  # YouTube アップロード
-  privacy = "public" if args.public else "private"
-  # note_content の H1 直下の段落を概要に使用
-  description = _extract_intro(script.note_content)
-  description += "\n\n#へぼ談 #ゆっくり解説"
-  # YouTube タイトルから改行を除去（サムネ/OP用の \n を含む場合）
-  yt_title = script.meta.title.replace("\n", "")
-  youtube_url = upload_to_youtube(
-    video_path=video_path,
-    title=yt_title,
-    description=description,
-    thumbnail_path=thumbnail_path if thumbnail_path.exists() else None,
-    privacy=privacy,
-  )
-
-  # note記事を YouTube URL 入りで保存
-  note_content = script.note_content.replace("{youtube_url}", youtube_url)
-  note_path = output_dir / "note.md"
-  note_path.write_text(note_content, encoding="utf-8")
-  logger.info("note記事保存: %s", note_path)
-
-  # X投稿文を YouTube URL 入りで保存
-  x_content = script.x_post_content.replace("{youtube_url}", youtube_url)
-  x_post_path = output_dir / "x_post.txt"
-  x_post_path.write_text(x_content, encoding="utf-8")
-  logger.info("X投稿文保存: %s", x_post_path)
-
-  # アップロード情報を保存
-  upload_info = {
-    "youtube_url": youtube_url,
-    "privacy": privacy,
-    "title": script.meta.title,
-  }
-  info_path = output_dir / "upload_info.json"
-  info_path.write_text(
-    json.dumps(upload_info, ensure_ascii=False, indent=2),
-    encoding="utf-8",
-  )
-
-  logger.info("=" * 50)
-  logger.info("アップロード完了")
   logger.info("  YouTube: %s", youtube_url)
-  logger.info("  note記事: %s", note_path)
-  logger.info("  X投稿文: %s", x_post_path)
   logger.info("=" * 50)
 
 

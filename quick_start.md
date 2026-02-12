@@ -48,6 +48,7 @@ python -m src.main -s output/20260210_123456/script.json -t
 
 # 5a Youtubeに動画を非公開でアップロード(メインで使用)
 ## note.mdやx_post.txt、upload_info.jsonなどが生成される
+
 python -m src.upload output/20260210_123456
 .venv/bin/python -m src.upload output/20260210_123456
 
@@ -58,16 +59,17 @@ https://studio.youtube.com/channel/UChh3-OwADcoDem5abqD1m4w
 python -m src.upload output/20260210_123456 --public
 .venv/bin/python -m src.upload output/20260210_123456 --public
 
-# 7 YoutubeのURLを含めてXに投稿
+# 7 shortアップロード(本編公開後に実行)
+.venv/bin/python -m src.upload_shorts output/20260210_123456
+
+# 8 Xに投稿
 python -m src.post_x output/20260210_123456
 .venv/bin/python -m src.post_x output/20260210_123456
 
-# 本編アップロード後に実行
-.venv/bin/python -m src.upload_shorts output/20260210_123456
+# 9 noteなどを手動で公開
 
-# 8 noteなどを手動で公開
-- shortアップロード
 - note投稿
+
 - niconico投稿
 https://garage.nicovideo.jp/niconico-garage/video/series/549523
 - tiktoc
