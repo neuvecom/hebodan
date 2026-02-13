@@ -942,8 +942,7 @@ def _render_chat_frame(
   bg_image: Image.Image | None,
   dialogue: list[DialogueLine],
   current_idx: int,
-  tsuno_icon: Image.Image,
-  megane_icon: Image.Image,
+  icon_cache: dict[tuple[str, str], Image.Image],
   font: ImageFont.FreeTypeFont,
 ) -> tuple[np.ndarray, np.ndarray]:
   """チャット画面1フレームを描画して (合成済みRGB, チャットオーバーレイRGBA) を返す"""
@@ -996,16 +995,17 @@ def _render_chat_frame(
     row_h = max(bh, icon_size)
     y_cursor -= row_h
 
+    emotion = line.emotion if (speaker, line.emotion) in icon_cache else "normal"
+    icon_img = icon_cache.get((speaker, emotion), icon_cache.get((speaker, "normal")))
+
     if speaker == "tsuno":
       icon_x = _CHAT_ICON_MARGIN
       bubble_x = icon_x + icon_size + _CHAT_ICON_GAP
-      icon_img = tsuno_icon
       bubble_color = _CHAT_TSUNO_COLOR
       text_color = _CHAT_TSUNO_TEXT
     else:
       bubble_x = width - _CHAT_ICON_MARGIN - icon_size - _CHAT_ICON_GAP - bw
       icon_x = width - _CHAT_ICON_MARGIN - icon_size
-      icon_img = megane_icon
       bubble_color = _CHAT_MEGANE_COLOR
       text_color = _CHAT_MEGANE_TEXT
 
@@ -1067,11 +1067,21 @@ def compose_portrait(
     bg_image = Image.open(bg_image_path).convert("RGB")
     bg_image = bg_image.resize((width, height), Image.LANCZOS)
 
-  # キャラアイコン（normal_closed を使用）
-  tsuno_icon_path = IMAGES_DIR / "tsuno" / "normal_closed.png"
-  megane_icon_path = IMAGES_DIR / "megane" / "normal_closed.png"
-  tsuno_icon = _make_circular_icon(tsuno_icon_path, _CHAT_ICON_SIZE)
-  megane_icon = _make_circular_icon(megane_icon_path, _CHAT_ICON_SIZE)
+  # キャラアイコン（表情ごとにキャッシュ）
+  from src.utils.character_assets import VALID_EMOTIONS
+
+  icon_cache: dict[tuple[str, str], Image.Image] = {}
+  for speaker in ("tsuno", "megane"):
+    for emotion in VALID_EMOTIONS:
+      path = IMAGES_DIR / speaker / f"{emotion}_closed.png"
+      if path.exists():
+        icon_cache[(speaker, emotion)] = _make_circular_icon(path, _CHAT_ICON_SIZE)
+    # フォールバック: normal がなければ最初に見つかったものを使う
+    if (speaker, "normal") not in icon_cache:
+      for emotion in VALID_EMOTIONS:
+        if (speaker, emotion) in icon_cache:
+          icon_cache[(speaker, "normal")] = icon_cache[(speaker, emotion)]
+          break
 
   # フォント
   font = ImageFont.truetype(str(FONT_PATH), _CHAT_FONT_SIZE)
@@ -1129,7 +1139,7 @@ def compose_portrait(
     # チャットフレーム描画（背景+チャットオーバーレイを分離取得）
     composite_arr, chat_overlay_arr = _render_chat_frame(
       width, height, bg_image, dialogue, i,
-      tsuno_icon, megane_icon, font,
+      icon_cache, font,
     )
 
     scene_layers = []
@@ -1181,14 +1191,13 @@ def compose_portrait(
   # 全セリフを結合して出力
   final = concatenate_videoclips(clips, method="compose")
 
-  # Shorts用: 3分を超える場合は自動倍速（音声ピッチが若干上がる）
+  # Shorts用: 3分を超える場合は警告（台本を手動で削る）
   if final.duration > SHORTS_MAX_DURATION:
-    speed_factor = final.duration / SHORTS_MAX_DURATION
-    logger.info(
-      "Shorts用倍速: %.2fx (%.0fs → %.0fs)",
-      speed_factor, final.duration, SHORTS_MAX_DURATION,
+    over = final.duration - SHORTS_MAX_DURATION
+    logger.warning(
+      "Shorts上限(%.0fs)を%.0fs超過しています。台本を短くしてください。",
+      SHORTS_MAX_DURATION, over,
     )
-    final = final.with_speed_scaled(speed_factor)
 
   output_path.parent.mkdir(parents=True, exist_ok=True)
   final.write_videofile(

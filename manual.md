@@ -160,6 +160,20 @@ python scripts/setup_youtube_auth.py
 
 ---
 
+## 使用料金の確認方法
+
+各 API の使用量・料金は Web ダッシュボードで確認します。API 経由で残高を取得するエンドポイントはどちらも提供されていません。
+
+| サービス | 課金方式 | 確認先 |
+|---|---|---|
+| Gemini API | 無料枠あり / 有料は従量課金 | [AI Studio Dashboard](https://aistudio.google.com/) → Usage and Limits |
+| X (Twitter) API | Pay-Per-Use（クレジット事前購入） | [Developer Console](https://developer.x.com/) |
+
+- **Gemini API**: Google Cloud Billing と連携しており、[Cloud Console](https://console.cloud.google.com/billing) で支出トラッキングが可能。予算アラート機能で自動通知も設定できます。
+- **X API**: クレジットを事前購入し、API コールごとに残高が減る方式。残高は Developer Console で確認します。
+
+---
+
 ## コマンド一覧
 
 ### 動画生成

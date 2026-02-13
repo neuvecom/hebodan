@@ -13,6 +13,7 @@ from pathlib import Path
 
 from src.models import ScriptData
 from src.uploaders.youtube_uploader import upload_to_youtube
+from src.utils.reading_annotations import remove_reading_annotations
 
 logging.basicConfig(
   level=logging.INFO,
@@ -70,8 +71,9 @@ def run_upload(output_dir, public=False):
 
   privacy = "public" if public else "private"
   description = _extract_intro(script.note_content)
+  description = remove_reading_annotations(description)
   description += "\n\n#へぼ談 #ゆっくり解説"
-  yt_title = script.meta.title.replace("\n", "")
+  yt_title = remove_reading_annotations(script.meta.title).replace("\n", "")
 
   logger.info("=" * 50)
   logger.info("YouTube アップロード開始")

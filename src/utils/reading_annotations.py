@@ -15,10 +15,10 @@ import re
 from pathlib import Path
 
 # 辞書エントリ解析用（ひらがな含む: 楽して<らくして> 等に対応）
-_READING_PATTERN = re.compile(r'([一-龯々ヶa-zA-Zａ-ｚＡ-Ｚ\u3040-\u309F\u30A0-\u30FF]+)<([^<>]+)>')
+_READING_PATTERN = re.compile(r'([一-龯々ヶa-zA-Z0-9ａ-ｚＡ-Ｚ０-９\u3040-\u309F\u30A0-\u30FF]+)<([^<>]+)>')
 
 # インライン変換用（ひらがな除外: 助詞を跨いで過剰マッチしないようにする）
-_INLINE_PATTERN = re.compile(r'([一-龯々ヶa-zA-Zａ-ｚＡ-Ｚ\u30A0-\u30FF]+)<([^<>]+)>')
+_INLINE_PATTERN = re.compile(r'([一-龯々ヶa-zA-Z0-9ａ-ｚＡ-Ｚ０-９\u30A0-\u30FF]+)<([^<>]+)>')
 
 # 表示専用テキスト [[...]] のパターン
 _DISPLAY_ONLY_PATTERN = re.compile(r'\[\[(.+?)\]\]')
