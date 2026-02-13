@@ -193,58 +193,80 @@ class HebodanCLI:
         logger.info("  python -m src run -s %s", script_path)
         return
 
-    # ステップ3: 音声＋動画生成
+    # ステップ3〜4: 音声＋動画生成 → 確認（edit で修正→再生成ループ）
     from src.generators.audio_generator import AudioGenerator
     from src.generators.thumbnail_generator import generate_thumbnail
     from src.generators.video_composer import compose_landscape, compose_portrait
 
-    print()
-    logger.info("音声＋動画を生成中...")
-
-    logger.info("  音声を生成中...")
-    audio_gen = AudioGenerator()
-    audio_paths = audio_gen.generate(script.dialogue, audio_output_dir)
-
-    logger.info("  サムネイルを生成中...")
-    thumbnail_path = run_output_dir / "thumbnail.png"
-    landscape_bg_path = run_output_dir / "bg_landscape.png"
-    portrait_bg_path = run_output_dir / "bg_portrait.png"
-    landscape_bg = landscape_bg_path if landscape_bg_path.exists() else None
-    portrait_bg = portrait_bg_path if portrait_bg_path.exists() else None
-    generate_thumbnail(script.meta.title, thumbnail_path, landscape_bg)
-
-    logger.info("  横長動画 (16:9) を合成中...")
-    landscape_path = run_output_dir / "landscape.mp4"
-    compose_landscape(
-      script.dialogue, audio_paths, landscape_path, landscape_bg,
-      title=script.meta.title,
-    )
-
-    logger.info("  縦長動画 (9:16) を合成中...")
-    portrait_path = run_output_dir / "portrait.mp4"
-    compose_portrait(
-      script.dialogue, audio_paths, portrait_path, portrait_bg,
-      title=script.meta.title,
-    )
-
-    # note記事 / X投稿文を保存（テンプレート状態）
-    note_path = run_output_dir / "note.md"
-    note_path.write_text(script.note_content, encoding="utf-8")
-    x_post_path = run_output_dir / "x_post.txt"
-    x_post_path.write_text(script.x_post_content, encoding="utf-8")
-
-    print()
-    logger.info("動画生成完了:")
-    logger.info("  横長: %s", landscape_path)
-    logger.info("  縦長: %s", portrait_path)
-    logger.info("  サムネ: %s", thumbnail_path)
-
-    # ステップ4: 動画確認
-    print()
-    try:
-      input("動画を確認してから Enter を押してください...")
-    except (EOFError, KeyboardInterrupt):
+    while True:
       print()
+      logger.info("音声＋動画を生成中...")
+
+      logger.info("  音声を生成中...")
+      audio_gen = AudioGenerator()
+      audio_paths = audio_gen.generate(script.dialogue, audio_output_dir)
+
+      logger.info("  サムネイルを生成中...")
+      thumbnail_path = run_output_dir / "thumbnail.png"
+      landscape_bg_path = run_output_dir / "bg_landscape.png"
+      portrait_bg_path = run_output_dir / "bg_portrait.png"
+      landscape_bg = landscape_bg_path if landscape_bg_path.exists() else None
+      portrait_bg = portrait_bg_path if portrait_bg_path.exists() else None
+      generate_thumbnail(script.meta.title, thumbnail_path, landscape_bg)
+
+      logger.info("  横長動画 (16:9) を合成中...")
+      landscape_path = run_output_dir / "landscape.mp4"
+      compose_landscape(
+        script.dialogue, audio_paths, landscape_path, landscape_bg,
+        title=script.meta.title,
+      )
+
+      logger.info("  縦長動画 (9:16) を合成中...")
+      portrait_path = run_output_dir / "portrait.mp4"
+      compose_portrait(
+        script.dialogue, audio_paths, portrait_path, portrait_bg,
+        title=script.meta.title,
+      )
+
+      # note記事 / X投稿文を保存（テンプレート状態）
+      note_path = run_output_dir / "note.md"
+      note_path.write_text(script.note_content, encoding="utf-8")
+      x_post_path = run_output_dir / "x_post.txt"
+      x_post_path.write_text(script.x_post_content, encoding="utf-8")
+
+      print()
+      logger.info("動画生成完了:")
+      logger.info("  横長: %s", landscape_path)
+      logger.info("  縦長: %s", portrait_path)
+      logger.info("  サムネ: %s", thumbnail_path)
+
+      # ステップ4: 動画確認 [Y/edit/n]
+      print()
+      try:
+        answer = input("続行しますか？ [Y/edit/n] ").strip().lower()
+      except (EOFError, KeyboardInterrupt):
+        print()
+        answer = ""
+
+      if answer in ("", "y", "yes"):
+        break
+      elif answer == "edit":
+        editor = os.environ.get("EDITOR", "vim")
+        logger.info("$EDITOR (%s) で台本を開きます...", editor)
+        subprocess.call([editor, str(script_path)])
+        # 再読み込み
+        raw = json.loads(script_path.read_text(encoding="utf-8"))
+        script = ScriptData.from_dict(raw)
+        logger.info(
+          "台本を再読み込みしました（%d セリフ）。再生成します...",
+          len(script.dialogue),
+        )
+        continue
+      elif answer in ("n", "no"):
+        elapsed = time.time() - start_time
+        logger.info("中断しました（%.1f秒）。続きは以下で再開できます:", elapsed)
+        logger.info("  python -m src run -s %s", script_path)
+        return
 
     # ステップ5: YouTube アップロード
     youtube_url = None
@@ -254,7 +276,19 @@ class HebodanCLI:
       youtube_url = run_upload(run_output_dir)
       logger.info("  YouTube: %s", youtube_url)
 
-    # ステップ6: Shorts アップロード
+    # ステップ6: YouTube 公開設定
+    if youtube_url:
+      print()
+      print(f"  YouTube Studio で動画を公開してください:")
+      print(f"  {YOUTUBE_STUDIO_URL}")
+      print()
+      print("  ※ 非公開のままだと X 投稿時にサムネイルが展開されません")
+      try:
+        input("  公開設定が完了したら Enter を押してください...")
+      except (EOFError, KeyboardInterrupt):
+        print()
+
+    # ステップ7: Shorts アップロード
     shorts_url = None
     if youtube_url and _confirm("\nShorts もアップロードしますか？"):
       from src.upload_shorts import run_upload_shorts
@@ -262,9 +296,10 @@ class HebodanCLI:
       shorts_url = run_upload_shorts(run_output_dir)
       logger.info("  Shorts: %s", shorts_url)
 
-    # ステップ7: X 投稿
+    # ステップ8: X 投稿
     tweet_url = None
     if youtube_url and _confirm("\nX に投稿しますか？"):
+      print("  ※ 動画が非公開の場合、サムネイルは展開されません")
       from src.post_x import run_post_x
 
       tweet_url = run_post_x(run_output_dir)
