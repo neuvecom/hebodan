@@ -132,6 +132,7 @@ class AudioGenerator:
         "音声生成中 [%d/%d]: %s「%s」",
         i + 1, len(dialogue), char_config["name"], line.text[:20],
       )
+      logger.info("  TTS送信: %s", tts_text)
 
       # 発音可能な文字がない場合（記号・句読点のみ）は短い無音WAVを生成
       if not re.search(r"[\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]", tts_text):
