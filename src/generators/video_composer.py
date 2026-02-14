@@ -14,10 +14,13 @@ from moviepy import (
   VideoClip,
   concatenate_videoclips,
 )
-from moviepy.audio.fx import AudioFadeOut
+from moviepy.audio.fx import AudioFadeOut, AudioLoop
 
 from src.config import (
   BG_COLOR,
+  BGM_FADE_OUT,
+  BGM_PATH,
+  BGM_VOLUME,
   DIALOGUE_LOGO_PATH,
   ENDING_CALL_TEXT,
   ENDING_CALL_VOICE_MEGANE_PATH,
@@ -61,6 +64,53 @@ from src.utils.reading_annotations import remove_reading_annotations, unwrap_dis
 from src.utils.text_renderer import render_text
 
 logger = logging.getLogger(__name__)
+
+
+def _mix_bgm(final_clip, bgm_start: float = 0.0):
+  """本編にBGMをミックスする（低音量ループ＋末尾フェードアウト）
+
+  Args:
+    final_clip: 結合済みの動画クリップ
+    bgm_start: BGM開始位置（秒）。OPがある場合はOP長を指定してスキップ。
+  """
+  if not BGM_PATH.exists():
+    logger.info("BGMファイルが見つかりません: %s（BGMスキップ）", BGM_PATH)
+    return final_clip
+
+  bgm = AudioFileClip(str(BGM_PATH))
+
+  # BGM再生区間の長さ
+  bgm_duration = final_clip.duration - bgm_start
+  if bgm_duration <= 0:
+    return final_clip
+
+  # 再生区間に合わせてループ
+  if bgm.duration < bgm_duration:
+    bgm = bgm.with_effects([AudioLoop(duration=bgm_duration)])
+  else:
+    bgm = bgm.with_duration(bgm_duration)
+
+  # 音量を下げる＋末尾フェードアウト
+  bgm = bgm.with_volume_scaled(BGM_VOLUME)
+  bgm = bgm.with_effects([AudioFadeOut(BGM_FADE_OUT)])
+
+  # OP分だけ開始位置をずらす
+  bgm = bgm.with_start(bgm_start)
+
+  # 既存音声と合成
+  if final_clip.audio:
+    mixed = CompositeAudioClip([final_clip.audio, bgm]).with_duration(
+      final_clip.duration,
+    )
+    final_clip = final_clip.with_audio(mixed)
+  else:
+    final_clip = final_clip.with_audio(bgm)
+
+  logger.info(
+    "BGMミックス完了 (開始%.1fs, 音量%.0f%%, フェードアウト%.1fs)",
+    bgm_start, BGM_VOLUME * 100, BGM_FADE_OUT,
+  )
+  return final_clip
 
 
 def _create_background_clip(
@@ -816,6 +866,8 @@ def compose_landscape(
 
   # 全セリフを結合して出力
   final = concatenate_videoclips(clips, method="compose")
+  has_op = title and OPENING_LOGO_PATH.exists()
+  final = _mix_bgm(final, bgm_start=OPENING_DURATION if has_op else 0.0)
   output_path.parent.mkdir(parents=True, exist_ok=True)
   final.write_videofile(
     str(output_path),
@@ -1190,6 +1242,8 @@ def compose_portrait(
 
   # 全セリフを結合して出力
   final = concatenate_videoclips(clips, method="compose")
+  has_op = title and OPENING_LOGO_PATH.exists()
+  final = _mix_bgm(final, bgm_start=OPENING_DURATION if has_op else 0.0)
 
   # Shorts用: 3分を超える場合は警告（台本を手動で削る）
   if final.duration > SHORTS_MAX_DURATION:

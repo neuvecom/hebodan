@@ -90,6 +90,11 @@ ENDING_FADE_IN = 0.5       # フェードイン秒数
 ENDING_FADE_OUT = 2.0      # フェードアウト秒数
 ENDING_VOICE_GAP = 0.3     # セリフ間の間（秒）
 
+# BGM設定
+BGM_PATH = AUDIO_DIR / "bgm" / "Baby Animals Playing - Joel Cummins.mp3"
+BGM_VOLUME = 0.08          # 会話の邪魔にならない音量（8%）
+BGM_FADE_OUT = 3.0         # 末尾フェードアウト秒数
+
 # ショート動画設定
 SHORTS_MAX_DURATION = 180.0  # YouTube Shorts上限（秒）= 3分
 
