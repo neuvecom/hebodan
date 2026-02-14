@@ -190,7 +190,7 @@ class HebodanCLI:
       if not _confirm("\n[3] 音声＋動画を生成しますか？"):
         elapsed = time.time() - start_time
         logger.info("中断しました（%.1f秒）。続きは以下で再開できます:", elapsed)
-        logger.info("  python -m src run -s %s", script_path)
+        logger.info("  %s -m src run -s %s", sys.executable, script_path)
         return
 
     # ステップ3〜4: 音声＋動画生成 → 確認（edit で修正→再生成ループ）
@@ -265,7 +265,7 @@ class HebodanCLI:
       elif answer in ("n", "no"):
         elapsed = time.time() - start_time
         logger.info("中断しました（%.1f秒）。続きは以下で再開できます:", elapsed)
-        logger.info("  python -m src run -s %s", script_path)
+        logger.info("  %s -m src run -s %s", sys.executable, script_path)
         return
 
     # ステップ5: YouTube アップロード

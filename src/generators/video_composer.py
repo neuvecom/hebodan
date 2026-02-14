@@ -831,7 +831,7 @@ def compose_landscape(
 # --- LINE チャット風縦動画ヘルパー ---
 
 # チャットレイアウト定数
-_CHAT_ICON_SIZE = 80
+_CHAT_ICON_SIZE = 100
 _CHAT_ICON_MARGIN = 30
 _CHAT_ICON_GAP = 12
 _CHAT_BUBBLE_MAX_WIDTH = 700
