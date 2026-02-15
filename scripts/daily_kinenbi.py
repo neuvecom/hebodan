@@ -1,8 +1,8 @@
-"""毎日の記念日を Wikipedia から取得して SendGrid でメール送信するスクリプト
+"""毎日の記念日を Wikipedia から取得して Resend でメール送信するスクリプト
 
 使い方:
   # 環境変数を設定して実行
-  SENDGRID_API_KEY=xxx EMAIL_TO=xxx EMAIL_FROM=xxx python scripts/daily_kinenbi.py
+  RESEND_API_KEY=xxx EMAIL_TO=xxx EMAIL_FROM=xxx python scripts/daily_kinenbi.py
 
   # 日付を指定（テスト用）
   python scripts/daily_kinenbi.py --date 2026-02-12
@@ -139,32 +139,31 @@ def build_html(month: int, day: int, items: list[str]) -> str:
 
 
 def send_email(subject: str, html_body: str):
-  """SendGrid API でメールを送信する"""
-  api_key = os.environ.get("SENDGRID_API_KEY")
+  """Resend API でメールを送信する"""
+  api_key = os.environ.get("RESEND_API_KEY")
   email_to = os.environ.get("EMAIL_TO")
   email_from = os.environ.get("EMAIL_FROM")
 
   if not all([api_key, email_to, email_from]):
-    print("環境変数が不足しています: SENDGRID_API_KEY, EMAIL_TO, EMAIL_FROM", file=sys.stderr)
+    print("環境変数が不足しています: RESEND_API_KEY, EMAIL_TO, EMAIL_FROM", file=sys.stderr)
     sys.exit(1)
 
-  # SendGrid v3 API を直接呼び出し（sendgrid パッケージ不要）
   resp = requests.post(
-    "https://api.sendgrid.com/v3/mail/send",
+    "https://api.resend.com/emails",
     headers={
       "Authorization": f"Bearer {api_key}",
       "Content-Type": "application/json",
     },
     json={
-      "personalizations": [{"to": [{"email": email_to}]}],
-      "from": {"email": email_from, "name": "へぼ談ネタ帳"},
+      "from": f"へぼ談ネタ帳 <{email_from}>",
+      "to": [email_to],
       "subject": subject,
-      "content": [{"type": "text/html", "value": html_body}],
+      "html": html_body,
     },
     timeout=30,
   )
 
-  if resp.status_code in (200, 201, 202):
+  if resp.status_code == 200:
     print(f"メール送信成功: {subject}")
   else:
     print(f"メール送信失敗 ({resp.status_code}): {resp.text}", file=sys.stderr)
