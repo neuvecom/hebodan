@@ -5,10 +5,10 @@
   .venv/bin/python scripts/generate_ending_voice.py
 
 assets/audio/se/ に以下を保存します:
-  - ending_call_tsuno.wav   (つの「チャンネル登録よろしくね！」)
-  - ending_call_megane.wav  (めがね「チャンネル登録よろしくね！」)
-  - ending_tsuno.wav        (つの「新しい動画の通知が届いて便利なんだよ」)
-  - ending_megane.wav       (めがね「でもたくさんのチャンネル登録すると逆に不便ですよね？」)
+  - ending_call_tsuno.wav      (つの「チャンネル登録よろしくね！」)
+  - ending_call_megane.wav     (めがね「チャンネル登録よろしくね！」)
+  - ending_tsuno_01.wav        (つの雑談)
+  - ending_megane_01〜10.wav   (めがね雑談 10パターン)
 """
 
 import sys
@@ -24,12 +24,32 @@ from src.config import CHARACTERS, COEIROINK_HOST
 OUTPUT_DIR = PROJECT_ROOT / "assets" / "audio" / "se"
 
 # 生成する音声の定義: (ファイル名, キャラキー, テキスト)
-VOICES = [
+# --- 固定ボイス（チャンネル登録呼びかけ） ---
+VOICES_CALL = [
   ("ending_call_tsuno.wav", "tsuno", "チャンネル登録よろしくね！"),
   ("ending_call_megane.wav", "megane", "チャンネル登録よろしくね！"),
-  ("ending_tsuno.wav", "tsuno", "新しい動画の通知が届いて便利なんだよ"),
-  ("ending_megane.wav", "megane", "でもたくさんのチャンネル登録すると逆に不便ですよね？"),
 ]
+
+# --- つの雑談（固定1パターン） ---
+VOICES_TSUNO_CHAT = [
+  ("ending_tsuno_01.wav", "tsuno", "新しい動画の通知が届いて便利なんだよ"),
+]
+
+# --- めがね雑談（10パターン・ランダム選択用） ---
+VOICES_MEGANE_CHAT = [
+  ("ending_megane_01.wav", "megane", "でもたくさんのチャンネル登録すると逆に不便ですよね？"),
+  ("ending_megane_02.wav", "megane", "通知オフにしてる人って結構多いらしいですよ"),
+  ("ending_megane_03.wav", "megane", "通知たまりすぎると見ないですよね？"),
+  ("ending_megane_04.wav", "megane", "あと、忘れないようにってことですよね"),
+  ("ending_megane_05.wav", "megane", "通知きて3秒で開く人、めちゃくちゃ暇ですよね"),
+  ("ending_megane_06.wav", "megane", "まあ、押して損することはないですからね"),
+  ("ending_megane_07.wav", "megane", "いいねも押してもらわないとですよね？"),
+  ("ending_megane_08.wav", "megane", "通知よりコメントの方が嬉しいんじゃないですか？"),
+  ("ending_megane_09.wav", "megane", "登録ボタンの位置、意外とわかりにくいですよね"),
+  ("ending_megane_10.wav", "megane", "いいね2回押してくれる人ありがたいですが、無意味なんですよね"),
+]
+
+VOICES = VOICES_CALL + VOICES_TSUNO_CHAT + VOICES_MEGANE_CHAT
 
 
 def generate_voice(filename: str, speaker_key: str, text: str) -> None:
@@ -92,12 +112,27 @@ def main():
 
   OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+  skip_existing = "--skip-existing" in sys.argv
+  failed = []
   for filename, speaker_key, text in VOICES:
-    generate_voice(filename, speaker_key, text)
+    if skip_existing and (OUTPUT_DIR / filename).exists():
+      print(f"スキップ（既存）: {filename}")
+      continue
+    try:
+      generate_voice(filename, speaker_key, text)
+    except requests.HTTPError as e:
+      print(f"  ✗ 失敗: {filename}「{text}」- {e}")
+      failed.append((filename, text))
 
   print("\n完了！生成ファイル:")
   for filename, _, _ in VOICES:
-    print(f"  {OUTPUT_DIR / filename}")
+    path = OUTPUT_DIR / filename
+    mark = "✓" if path.exists() else "✗"
+    print(f"  {mark} {path}")
+  if failed:
+    print(f"\n⚠ {len(failed)}件の生成に失敗しました:")
+    for fn, txt in failed:
+      print(f"  - {fn}「{txt}」")
 
 
 if __name__ == "__main__":

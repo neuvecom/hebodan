@@ -1,6 +1,7 @@
 """MoviePy を使った動画合成モジュール（口パク・表情対応）"""
 
 import logging
+import random
 from pathlib import Path
 
 import numpy as np
@@ -31,9 +32,10 @@ from src.config import (
   ENDING_TEXT_FONT_SIZE,
   ENDING_TEXT_STROKE_COLOR,
   ENDING_TEXT_STROKE_WIDTH,
+  ENDING_VOICE_DIR,
   ENDING_VOICE_GAP,
-  ENDING_VOICE_MEGANE_PATH,
-  ENDING_VOICE_TSUNO_PATH,
+  ENDING_VOICE_MEGANE_PATTERN,
+  ENDING_VOICE_TSUNO_PATTERN,
   FONT_PATH,
   IMAGES_DIR,
   LANDSCAPE_SIZE,
@@ -318,6 +320,16 @@ def _create_opening_clip(
   return opening
 
 
+def _pick_random_voice(pattern: str) -> Path | None:
+  """globパターンにマッチする音声ファイルからランダムに1つ選ぶ"""
+  candidates = sorted(ENDING_VOICE_DIR.glob(pattern))
+  if not candidates:
+    return None
+  chosen = random.choice(candidates)
+  logger.info("ED雑談ボイス選択: %s (%d候補中)", chosen.name, len(candidates))
+  return chosen
+
+
 def _create_ending_clip(
   size: tuple[int, int],
   bg_image_path: Path | None = None,
@@ -354,15 +366,17 @@ def _create_ending_clip(
 
   tsuno_start = ENDING_FADE_IN + call_dur + ENDING_VOICE_GAP
   tsuno_dur = 0.0
-  if ENDING_VOICE_TSUNO_PATH.exists():
-    tsuno_audio = AudioFileClip(str(ENDING_VOICE_TSUNO_PATH))
+  tsuno_voice = _pick_random_voice(ENDING_VOICE_TSUNO_PATTERN)
+  if tsuno_voice:
+    tsuno_audio = AudioFileClip(str(tsuno_voice))
     tsuno_dur = tsuno_audio.duration
     audio_clips.append(tsuno_audio.with_start(tsuno_start))
 
   megane_start = tsuno_start + tsuno_dur + ENDING_VOICE_GAP
   megane_dur = 0.0
-  if ENDING_VOICE_MEGANE_PATH.exists():
-    megane_audio = AudioFileClip(str(ENDING_VOICE_MEGANE_PATH))
+  megane_voice = _pick_random_voice(ENDING_VOICE_MEGANE_PATTERN)
+  if megane_voice:
+    megane_audio = AudioFileClip(str(megane_voice))
     megane_dur = megane_audio.duration
     audio_clips.append(megane_audio.with_start(megane_start))
 
@@ -842,7 +856,7 @@ def compose_landscape(
       scene_layers.insert(1, logo_clip)  # 背景の上、キャラの下
 
     # 字幕（下部40%エリア中央）— [[表示専用]]を展開し、読みアノテーションを除去して表示
-    display_text = unwrap_display_only(remove_reading_annotations(line.text))
+    display_text = unwrap_display_only(remove_reading_annotations(line.text)).replace("\u301c", "\uff5e")
     subtitle = _create_subtitle_clip(
       display_text, duration, max_width=int(width * 0.85),
     )
@@ -1010,7 +1024,7 @@ def _render_chat_frame(
   # 各メッセージの表示テキスト（[[表示専用]]展開＋読み仮名アノテーション除去＋改行除去）
   # チャット吹き出しは幅ベースで自動折り返しするため、明示的改行は不要
   display_texts = [
-    unwrap_display_only(remove_reading_annotations(dialogue[idx].text)).replace("\n", "")
+    unwrap_display_only(remove_reading_annotations(dialogue[idx].text)).replace("\n", "").replace("\u301c", "\uff5e")
     for idx in range(current_idx + 1)
   ]
 
