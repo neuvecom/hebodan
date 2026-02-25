@@ -127,6 +127,8 @@ class AudioGenerator:
       tts_text = convert_reading_annotations(tts_text)
       tts_text = remove_reading_annotations(tts_text)
       tts_text = apply_reading_dict(tts_text, self._reading_dict)
+      # 波ダッシュ(U+301C)はCOEIROINKが読めないため「から」に変換
+      tts_text = tts_text.replace("\u301c", "から")
 
       logger.info(
         "音声生成中 [%d/%d]: %s「%s」",

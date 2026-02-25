@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -31,8 +32,15 @@ def _get_credentials() -> Credentials:
 
   if not creds or not creds.valid:
     if creds and creds.expired and creds.refresh_token:
-      creds.refresh(Request())
-    else:
+      try:
+        creds.refresh(Request())
+      except RefreshError:
+        logger.warning(
+          "トークンの更新に失敗しました（期限切れまたは無効化）。再認証を行います。"
+        )
+        creds = None
+
+    if creds is None:
       if not YOUTUBE_CLIENT_SECRET.exists():
         raise FileNotFoundError(
           f"YouTube OAuth クライアントシークレットが見つかりません: {YOUTUBE_CLIENT_SECRET}\n"

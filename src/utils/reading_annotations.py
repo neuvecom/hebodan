@@ -17,8 +17,10 @@ from pathlib import Path
 # 辞書エントリ解析用（ひらがな含む: 楽して<らくして> 等に対応）
 _READING_PATTERN = re.compile(r'([一-龯々ヶ〇a-zA-Z0-9ａ-ｚＡ-Ｚ０-９\u3040-\u309F\u30A0-\u30FF]+)<([^<>]+)>')
 
-# インライン変換用（ひらがな除外: 助詞を跨いで過剰マッチしないようにする）
-_INLINE_PATTERN = re.compile(r'([一-龯々ヶ〇a-zA-Z0-9ａ-ｚＡ-Ｚ０-９\u30A0-\u30FF]+)<([^<>]+)>')
+# インライン変換用（カタカナ前置を保持しつつ漢字/英数字をアノテーションで置換）
+# グループ1: 先行カタカナ（0文字以上）/ グループ2: 漢字・英数字 / グループ3: 読み
+# 例: "ボロ家<いえ>" → グループ1="ボロ", グループ2="家", グループ3="いえ" → "ボロいえ"
+_INLINE_PATTERN = re.compile(r'([\u30A0-\u30FF]*)([一-龯々ヶ〇a-zA-Z0-9ａ-ｚＡ-Ｚ０-９]+)<([^<>]+)>')
 
 # 表示専用テキスト [[...]] のパターン
 _DISPLAY_ONLY_PATTERN = re.compile(r'\[\[(.+?)\]\]')
@@ -27,10 +29,11 @@ _DISPLAY_ONLY_PATTERN = re.compile(r'\[\[(.+?)\]\]')
 def convert_reading_annotations(text: str) -> str:
     """TTS用: アノテーション付きテキストを読み仮名に置換する
 
-    漢字・カタカナ・英字のみマッチし、ひらがな（助詞等）を跨がない。
+    漢字・英字のみアノテーション対象とし、直前のカタカナ（先行語）は保持する。
     例: "飲み水やお湯は何<なん>とかなる" → "飲み水やお湯はなんとかなる"
+    例: "ボロ家<いえ>" → "ボロいえ"（カタカナ"ボロ"を保持）
     """
-    return _INLINE_PATTERN.sub(r'\2', text)
+    return _INLINE_PATTERN.sub(r'\1\3', text)
 
 
 def remove_reading_annotations(text: str) -> str:

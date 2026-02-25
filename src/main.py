@@ -31,6 +31,7 @@
 import argparse
 import json
 import logging
+import shutil
 import sys
 import time
 from dataclasses import asdict
@@ -92,6 +93,12 @@ def main():
     action="store_true",
     default=False,
     help="-s と併用。サムネイルだけ再生成する",
+  )
+  parser.add_argument(
+    "--bg",
+    type=str,
+    default=None,
+    help="既存の背景画像を再利用。出力ディレクトリのパスを指定（例: output/20260210_123456/）",
   )
   args = parser.parse_args()
 
@@ -252,15 +259,37 @@ def main():
     encoding="utf-8",
   )
 
-  # ステップ2: 背景画像生成
-  logger.info("[2/%d] 背景画像を生成中...", total_steps)
-  landscape_bg, portrait_bg = generate_backgrounds(theme, run_output_dir)
-  if landscape_bg:
-    logger.info("背景画像(横): %s", landscape_bg)
-  if portrait_bg:
-    logger.info("背景画像(縦): %s", portrait_bg)
+  # ステップ2: 背景画像
+  if args.bg:
+    # 既存の背景画像を再利用
+    bg_src_dir = Path(args.bg)
+    if not bg_src_dir.is_dir():
+      logger.error("背景画像ディレクトリが見つかりません: %s", bg_src_dir)
+      sys.exit(1)
+    logger.info("[2/%d] 既存の背景画像を再利用中（%s）...", total_steps, bg_src_dir)
+    landscape_bg = None
+    portrait_bg = None
+    for bg_name in ("bg_landscape.png", "bg_portrait.png"):
+      src = bg_src_dir / bg_name
+      if src.exists():
+        dst = run_output_dir / bg_name
+        shutil.copy2(str(src), str(dst))
+        if "landscape" in bg_name:
+          landscape_bg = dst
+        else:
+          portrait_bg = dst
+        logger.info("背景画像コピー: %s → %s", src, dst)
+    if not landscape_bg and not portrait_bg:
+      logger.warning("指定ディレクトリに背景画像が見つかりません: %s", bg_src_dir)
+  else:
+    logger.info("[2/%d] 背景画像を生成中...", total_steps)
+    landscape_bg, portrait_bg = generate_backgrounds(theme, run_output_dir)
+    if landscape_bg:
+      logger.info("背景画像(横): %s", landscape_bg)
+    if portrait_bg:
+      logger.info("背景画像(縦): %s", portrait_bg)
   if not landscape_bg and not portrait_bg:
-    logger.info("背景画像生成スキップ（ソリッドカラーを使用）")
+    logger.info("背景画像なし（ソリッドカラーを使用）")
 
   # --draft モード: 台本＋背景まで生成して終了
   if draft_mode:

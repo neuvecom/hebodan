@@ -63,7 +63,18 @@ cp .env.example .env
 # .env を編集して以下を設定:
 #   GEMINI_API_KEY    — Gemini APIキー
 #   TSUNO_SPEAKER_UUID / MEGANE_SPEAKER_UUID — COEIROINK話者UUID
+
+# 4. YouTube アップロード用 OAuth 設定
+#   Google Cloud Console で OAuth 2.0 クライアント ID を作成し、
+#   credentials/client_secret.json に配置
+#   初回アップロード時にブラウザで認証 → credentials/youtube_token.json が自動生成される
 ```
+
+### YouTube API トークンについて
+
+- Google Cloud プロジェクトが「テスト」モードの場合、リフレッシュトークンは **7日間** で失効する
+- トークン失効時はブラウザが自動で開き再認証を求められる（手動削除は不要）
+- サーバー上の cron 等で完全自動運用したい場合は、Google Cloud Console でプロジェクトを「本番」モードに移行する必要がある（プライバシーポリシーURL + Google審査が必要）
 
 ## 使い方
 
