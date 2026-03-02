@@ -25,3 +25,7 @@ assets/fonts/*.otf
 Thumbs.db
 
 temp/
+
+# ネタファイル（temp.md のみ追跡、その他は無視）
+neta/*
+!neta/temp.md

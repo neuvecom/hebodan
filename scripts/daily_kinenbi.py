@@ -1,11 +1,14 @@
 """毎日の記念日を Wikipedia から取得して Resend でメール送信するスクリプト
 
 使い方:
-  # 環境変数を設定して実行
+  # 環境変数を設定して実行（今日+7日先まで）
   RESEND_API_KEY=xxx EMAIL_TO=xxx EMAIL_FROM=xxx python scripts/daily_kinenbi.py
 
   # 日付を指定（テスト用）
   python scripts/daily_kinenbi.py --date 2026-02-12
+
+  # 先読み日数を変更（0で当日のみ、デフォルト7）
+  python scripts/daily_kinenbi.py --days-ahead 3
 """
 
 import argparse
@@ -118,7 +121,7 @@ def _clean_wikitext(text: str) -> str:
 
 
 def build_html(month: int, day: int, items: list[str]) -> str:
-  """メール用 HTML を組み立てる"""
+  """メール用 HTML を組み立てる（1日分）"""
   date_str = f"{month}月{day}日"
   items_html = "\n".join(f"<li>{item}</li>" for item in items)
 
@@ -132,6 +135,62 @@ def build_html(month: int, day: int, items: list[str]) -> str:
   <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
   <p style="color: #999; font-size: 12px;">
     出典: <a href="https://ja.wikipedia.org/wiki/{month}月{day}日">Wikipedia - {date_str}</a><br>
+    へぼ談チャンネルのネタ探し用に自動送信されています。
+  </p>
+</body>
+</html>"""
+
+
+WEEKDAY_JA = ["月", "火", "水", "木", "金", "土", "日"]
+
+
+def build_html_multi(days_data: list[tuple[datetime, list[str]]]) -> str:
+  """メール用 HTML を組み立てる（複数日分）
+
+  Args:
+    days_data: [(datetime, [記念日リスト]), ...] のリスト
+  """
+  sections = []
+  sources = []
+
+  for dt, items in days_data:
+    m, d = dt.month, dt.day
+    wd = WEEKDAY_JA[dt.weekday()]
+    date_str = f"{m}月{d}日({wd})"
+
+    if items:
+      items_html = "\n".join(f"      <li>{item}</li>" for item in items)
+      sections.append(f"""\
+  <h3 style="color: #e67e22; border-left: 4px solid #e67e22; padding-left: 8px; margin-top: 24px;">
+    &#x1F4C5; {date_str}
+  </h3>
+  <ul>
+{items_html}
+  </ul>""")
+    else:
+      sections.append(f"""\
+  <h3 style="color: #ccc; border-left: 4px solid #ccc; padding-left: 8px; margin-top: 24px;">
+    &#x1F4C5; {date_str}
+  </h3>
+  <p style="color: #999;">記念日が見つかりませんでした</p>""")
+
+    sources.append(
+      f'<a href="https://ja.wikipedia.org/wiki/{m}月{d}日">{date_str}</a>'
+    )
+
+  first_dt = days_data[0][0]
+  last_dt = days_data[-1][0]
+  title = f"{first_dt.month}/{first_dt.day}〜{last_dt.month}/{last_dt.day} の記念日・年中行事"
+
+  return f"""\
+<html>
+<body style="font-family: sans-serif; line-height: 1.8; color: #333;">
+  <h2 style="color: #2c3e50;">&#x1F4CB; {title}</h2>
+  <p style="color: #888; font-size: 13px;">予約投稿の計画用に1週間分まとめてお届け</p>
+{"".join(sections)}
+  <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+  <p style="color: #999; font-size: 12px;">
+    出典: {" | ".join(sources)}<br>
     へぼ談チャンネルのネタ探し用に自動送信されています。
   </p>
 </body>
@@ -174,7 +233,11 @@ def main():
   parser = argparse.ArgumentParser(description="記念日メール送信")
   parser.add_argument(
     "--date", type=str, default=None,
-    help="対象日（YYYY-MM-DD形式、省略時は本日JST）",
+    help="開始日（YYYY-MM-DD形式、省略時は本日JST）",
+  )
+  parser.add_argument(
+    "--days-ahead", type=int, default=7,
+    help="先読み日数（0で当日のみ、デフォルト7）",
   )
   parser.add_argument(
     "--dry-run", action="store_true",
@@ -183,30 +246,70 @@ def main():
   args = parser.parse_args()
 
   if args.date:
-    target = datetime.strptime(args.date, "%Y-%m-%d")
+    start = datetime.strptime(args.date, "%Y-%m-%d").replace(tzinfo=JST)
   else:
-    target = datetime.now(JST)
+    start = datetime.now(JST)
 
-  month, day = target.month, target.day
-  print(f"対象日: {month}月{day}日")
+  num_days = args.days_ahead + 1  # 当日を含む
 
-  # Wikipedia から記念日を取得
-  items = fetch_kinenbi(month, day)
-  if not items:
-    print("記念日が見つかりませんでした")
+  # 1日だけの場合は従来の動作
+  if num_days == 1:
+    month, day = start.month, start.day
+    print(f"対象日: {month}月{day}日")
+
+    items = fetch_kinenbi(month, day)
+    if not items:
+      print("記念日が見つかりませんでした")
+      return
+
+    print(f"記念日 {len(items)} 件取得")
+    subject = f"【へぼ談ネタ帳】{month}月{day}日の記念日"
+    html_body = build_html(month, day, items)
+
+    if args.dry_run:
+      print(f"\n件名: {subject}")
+      print("---")
+      for item in items:
+        print(f"  - {item}")
+      return
+
+    send_email(subject, html_body)
     return
 
-  print(f"記念日 {len(items)} 件取得")
+  # 複数日: 当日 + days_ahead 日分を取得
+  days_data: list[tuple[datetime, list[str]]] = []
+  total_items = 0
+
+  for i in range(num_days):
+    dt = start + timedelta(days=i)
+    m, d = dt.month, dt.day
+    wd = WEEKDAY_JA[dt.weekday()]
+    print(f"取得中: {m}月{d}日({wd})...", end=" ")
+
+    items = fetch_kinenbi(m, d)
+    days_data.append((dt, items))
+    total_items += len(items)
+    print(f"{len(items)}件")
+
+  print(f"\n合計: {num_days}日分、{total_items}件の記念日を取得")
 
   # メール組み立て
-  subject = f"【へぼ談ネタ帳】{month}月{day}日の記念日"
-  html_body = build_html(month, day, items)
+  first_dt = days_data[0][0]
+  last_dt = days_data[-1][0]
+  subject = f"【へぼ談ネタ帳】{first_dt.month}/{first_dt.day}〜{last_dt.month}/{last_dt.day}の記念日"
+  html_body = build_html_multi(days_data)
 
   if args.dry_run:
     print(f"\n件名: {subject}")
     print("---")
-    for item in items:
-      print(f"  - {item}")
+    for dt, items in days_data:
+      wd = WEEKDAY_JA[dt.weekday()]
+      print(f"\n■ {dt.month}月{dt.day}日({wd})")
+      if items:
+        for item in items:
+          print(f"  - {item}")
+      else:
+        print("  （なし）")
     return
 
   # 送信
